@@ -34,6 +34,8 @@ pub struct App {
 
     connection_state: ConnectionState,
     device_name: Option<String>,
+    /// When true, incoming measurements are ignored (connection stays alive).
+    paused: bool,
     last_error: Option<String>,
     /// Consecutive timeout count (0 = not waiting).
     waiting_timeouts: u32,
@@ -63,6 +65,7 @@ impl App {
             settings_open: false,
             connection_state: ConnectionState::Disconnected,
             device_name: None,
+            paused: false,
             last_error: None,
             waiting_timeouts: 0,
             last_measurement: None,
@@ -157,6 +160,7 @@ impl App {
         let ctx_clone = ctx.clone();
         let query_name = self.settings.query_device_name;
         let sample_interval_ms = self.settings.sample_interval_ms;
+        self.graph.set_sample_interval_ms(sample_interval_ms);
 
         std::thread::spawn(move || {
             info!("background thread: connecting to device");
@@ -258,6 +262,7 @@ impl App {
         self.cmd_tx = None;
         self.connection_state = ConnectionState::Disconnected;
         self.device_name = None;
+        self.paused = false;
     }
 
     fn drain_messages(&mut self) {
@@ -283,6 +288,9 @@ impl App {
                 DmmMessage::Measurement(m) => {
                     self.last_error = None;
                     self.waiting_timeouts = 0;
+                    if self.paused {
+                        continue;
+                    }
                     if let MeasuredValue::Normal(v) = &m.value {
                         self.graph.push(*v, &m.mode.to_string());
                         self.stats.push(*v);
@@ -446,6 +454,10 @@ impl App {
                     if ui.button("Disconnect").clicked() {
                         self.disconnect();
                     }
+                    let pause_label = if self.paused { "\u{25B6} Resume" } else { "\u{23F8} Pause" };
+                    if ui.button(pause_label).clicked() {
+                        self.paused = !self.paused;
+                    }
                     if ui.button("Clear").clicked() {
                         self.graph.clear();
                         self.stats.reset();
@@ -460,7 +472,11 @@ impl App {
             let (dot_color, status_text) = match &self.connection_state {
                 ConnectionState::Connected => {
                     let name = self.device_name.as_deref().unwrap_or("Connected");
-                    (Color32::from_rgb(60, 180, 75), name.to_string())
+                    if self.paused {
+                        (Color32::from_rgb(230, 160, 40), format!("{name} (paused)"))
+                    } else {
+                        (Color32::from_rgb(60, 180, 75), name.to_string())
+                    }
                 }
                 ConnectionState::Disconnected => {
                     (Color32::from_rgb(150, 150, 150), "Disconnected".to_string())

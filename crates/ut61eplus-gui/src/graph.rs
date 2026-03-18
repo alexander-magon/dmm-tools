@@ -6,9 +6,9 @@ use std::time::Instant;
 /// Maximum number of points to keep in the history buffer.
 const MAX_POINTS: usize = 10_000;
 
-/// Gap threshold: if two consecutive points are more than this apart,
-/// we consider it a disconnect gap and break the line.
-const GAP_THRESHOLD_SECS: f64 = 5.0;
+/// Default gap threshold multiplier: gap = max(interval * multiplier, minimum).
+const GAP_MULTIPLIER: f64 = 5.0;
+const GAP_MINIMUM_SECS: f64 = 1.0;
 
 /// Minimap height in logical pixels.
 const MINIMAP_HEIGHT: f32 = 60.0;
@@ -73,6 +73,8 @@ pub struct Graph {
     pub live: bool,
     /// User-controlled view center (seconds from origin). Used when not live.
     view_center: f64,
+    /// Gap detection threshold in seconds.
+    gap_threshold_secs: f64,
     /// When true, Y axis uses fixed min/max instead of auto-scaling.
     pub y_axis_fixed: bool,
     /// Fixed Y-axis minimum (editable text buffer for UI).
@@ -96,6 +98,7 @@ impl Graph {
             time_window_secs: 60.0,
             live: true,
             view_center: 0.0,
+            gap_threshold_secs: GAP_MINIMUM_SECS,
             y_axis_fixed: false,
             y_min_text: "-1".to_string(),
             y_max_text: "1".to_string(),
@@ -103,6 +106,12 @@ impl Graph {
             y_fixed_max: 1.0,
             y_user_set: false,
         }
+    }
+
+    /// Update gap detection threshold based on sample interval.
+    pub fn set_sample_interval_ms(&mut self, ms: u32) {
+        let interval_secs = (ms as f64 / 1000.0).max(0.1); // 0ms → use ~100ms wire time
+        self.gap_threshold_secs = (interval_secs * GAP_MULTIPLIER).max(GAP_MINIMUM_SECS);
     }
 
     pub fn push(&mut self, value: f64, mode: &str) {
@@ -182,7 +191,7 @@ impl Graph {
 
             if let Some(prev) = prev_time {
                 let gap = point.time.duration_since(prev).as_secs_f64();
-                if gap > GAP_THRESHOLD_SECS && !current_segment.is_empty() {
+                if gap > self.gap_threshold_secs && !current_segment.is_empty() {
                     segments.push(std::mem::take(&mut current_segment));
                 }
             }
@@ -205,7 +214,7 @@ impl Graph {
         for point in &self.history {
             if let Some(p) = prev {
                 let gap = point.time.duration_since(p.time).as_secs_f64();
-                if gap > GAP_THRESHOLD_SECS {
+                if gap > self.gap_threshold_secs {
                     let t1 = self.elapsed_secs(p.time);
                     let t2 = self.elapsed_secs(point.time);
                     gaps.push((t1, t2));
