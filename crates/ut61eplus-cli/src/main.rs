@@ -22,8 +22,8 @@ enum Cmd {
     Info,
     /// Continuously read measurements
     Read {
-        /// Interval between readings in milliseconds
-        #[arg(long, default_value = "500")]
+        /// Interval between readings in milliseconds (0 = fastest, ~10 Hz)
+        #[arg(long, default_value = "0")]
         interval_ms: u64,
         /// Output format
         #[arg(long, default_value = "text")]
@@ -31,6 +31,9 @@ enum Cmd {
         /// Output file (stdout if not specified)
         #[arg(short, long)]
         output: Option<String>,
+        /// Number of readings (0 = unlimited, Ctrl+C to stop)
+        #[arg(long, default_value = "0")]
+        count: usize,
     },
     /// Send a button press command to the meter
     Command {
@@ -100,7 +103,8 @@ fn main() {
             interval_ms,
             format,
             output,
-        } => cmd_read(interval_ms, format, output),
+            count,
+        } => cmd_read(interval_ms, format, output, count),
         Cmd::Command { action } => cmd_command(action),
         Cmd::Debug { count, interval_ms } => cmd_debug(count, interval_ms),
     };
@@ -109,6 +113,22 @@ fn main() {
         error!("{e}");
         eprintln!("Error: {e}");
         std::process::exit(1);
+    }
+}
+
+/// Open the meter with helpful error messages for common failures.
+fn open_with_help() -> Result<ut61eplus_lib::Dmm<ut61eplus_lib::cp2110::Cp2110>, Box<dyn std::error::Error>> {
+    match ut61eplus_lib::open() {
+        Ok(dmm) => Ok(dmm),
+        Err(ut61eplus_lib::error::Error::DeviceNotFound { .. }) => {
+            eprintln!("USB adapter not found.");
+            eprintln!("Check that the CP2110 USB adapter is plugged in.");
+            eprintln!("On Linux, ensure the udev rule is installed:");
+            eprintln!("  sudo cp udev/99-cp2110-unit.rules /etc/udev/rules.d/");
+            eprintln!("  sudo udevadm control --reload-rules");
+            Err("device not found".into())
+        }
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -126,7 +146,7 @@ fn cmd_list() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn cmd_info() -> Result<(), Box<dyn std::error::Error>> {
-    let mut dmm = ut61eplus_lib::open()?;
+    let mut dmm = open_with_help()?;
     let name = dmm.get_name()?;
     println!("Device: {name}");
     Ok(())
@@ -136,6 +156,7 @@ fn cmd_read(
     interval_ms: u64,
     format: OutputFormat,
     output_path: Option<String>,
+    count: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -143,7 +164,7 @@ fn cmd_read(
         r.store(false, Ordering::SeqCst);
     })?;
 
-    let mut dmm = ut61eplus_lib::open()?;
+    let mut dmm = open_with_help()?;
     info!("connected, starting measurement loop");
 
     let mut writer: Box<dyn Write> = match &output_path {
@@ -160,12 +181,18 @@ fn cmd_read(
     }
 
     let interval = Duration::from_millis(interval_ms);
+    let mut stats = ReadStats::default();
+    let mut i = 0usize;
 
-    while running.load(Ordering::SeqCst) {
+    while running.load(Ordering::SeqCst) && (count == 0 || i < count) {
         match dmm.request_measurement() {
             Ok(m) => {
+                if let MeasuredValue::Normal(v) = &m.value {
+                    stats.push(*v);
+                }
                 format_measurement(&mut writer, &m, &format)?;
                 writer.flush()?;
+                i += 1;
             }
             Err(ut61eplus_lib::error::Error::Timeout) => {
                 log::warn!("measurement timeout, retrying");
@@ -174,12 +201,47 @@ fn cmd_read(
                 return Err(e.into());
             }
         }
-        std::thread::sleep(interval);
+        if interval_ms > 0 && (count == 0 || i < count) {
+            std::thread::sleep(interval);
+        }
     }
 
     info!("shutting down");
     writer.flush()?;
+
+    // Print stats summary to stderr (doesn't interfere with piped output)
+    if stats.count > 0 {
+        eprintln!(
+            "\n--- {} samples | Min: {:.4} | Max: {:.4} | Avg: {:.4} ---",
+            stats.count,
+            stats.min,
+            stats.max,
+            stats.sum / stats.count as f64,
+        );
+    }
     Ok(())
+}
+
+#[derive(Default)]
+struct ReadStats {
+    min: f64,
+    max: f64,
+    sum: f64,
+    count: u64,
+}
+
+impl ReadStats {
+    fn push(&mut self, v: f64) {
+        if self.count == 0 {
+            self.min = v;
+            self.max = v;
+        } else {
+            self.min = self.min.min(v);
+            self.max = self.max.max(v);
+        }
+        self.sum += v;
+        self.count += 1;
+    }
 }
 
 fn format_measurement(
@@ -229,6 +291,10 @@ fn format_measurement(
                     "min": m.flags.min,
                     "max": m.flags.max,
                     "low_battery": m.flags.low_battery,
+                    "hv_warning": m.flags.hv_warning,
+                    "dc": m.flags.dc,
+                    "peak_min": m.flags.peak_min,
+                    "peak_max": m.flags.peak_max,
                 }
             });
             writeln!(w, "{}", serde_json::to_string(&obj).unwrap())
@@ -237,7 +303,7 @@ fn format_measurement(
 }
 
 fn cmd_command(action: ButtonAction) -> Result<(), Box<dyn std::error::Error>> {
-    let mut dmm = ut61eplus_lib::open()?;
+    let mut dmm = open_with_help()?;
     let cmd = action.to_command();
     dmm.send_command(cmd)?;
     println!("Sent {cmd:?}");
@@ -251,7 +317,7 @@ fn cmd_debug(count: usize, interval_ms: u64) -> Result<(), Box<dyn std::error::E
         r.store(false, Ordering::SeqCst);
     })?;
 
-    let mut dmm = ut61eplus_lib::open()?;
+    let mut dmm = open_with_help()?;
     let interval = Duration::from_millis(interval_ms);
     let mut i = 0;
 
@@ -320,10 +386,11 @@ mod tests {
     fn clap_parse_read_defaults() {
         let cli = Cli::try_parse_from(["ut61eplus", "read"]).unwrap();
         match cli.command {
-            Cmd::Read { interval_ms, format, output } => {
-                assert_eq!(interval_ms, 500);
+            Cmd::Read { interval_ms, format, output, count } => {
+                assert_eq!(interval_ms, 0);
                 assert!(matches!(format, OutputFormat::Text));
                 assert!(output.is_none());
+                assert_eq!(count, 0);
             }
             _ => panic!("expected Read"),
         }
@@ -336,12 +403,14 @@ mod tests {
             "--interval-ms", "100",
             "--format", "csv",
             "-o", "test.csv",
+            "--count", "10",
         ]).unwrap();
         match cli.command {
-            Cmd::Read { interval_ms, format, output } => {
+            Cmd::Read { interval_ms, format, output, count } => {
                 assert_eq!(interval_ms, 100);
                 assert!(matches!(format, OutputFormat::Csv));
                 assert_eq!(output.as_deref(), Some("test.csv"));
+                assert_eq!(count, 10);
             }
             _ => panic!("expected Read"),
         }
