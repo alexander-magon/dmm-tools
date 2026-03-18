@@ -1,0 +1,16 @@
+[package]
+name = "ut61eplus-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GUI application for the UNI-T UT61E+ multimeter"
+
+[dependencies]
+ut61eplus-lib = { path = "../ut61eplus-lib" }
+eframe = "0.31"
+egui_plot = "0.31"
+chrono = "0.4"
+csv = "1"
+rfd = "0.15"
+env_logger = "0.11"
+log = "0.4"
