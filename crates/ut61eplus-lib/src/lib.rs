@@ -54,7 +54,10 @@ impl<T: Transport> Dmm<T> {
     /// HID interrupt reads.
     fn read_response(&mut self) -> Result<Measurement> {
         const READ_TIMEOUT_MS: i32 = 2000;
-        const MAX_ATTEMPTS: usize = 10;
+        // CP2110 at 9600 baud delivers data one byte at a time via HID
+        // interrupt reports. A full response is ~21 bytes, so we need
+        // enough iterations to collect them all.
+        const MAX_ATTEMPTS: usize = 64;
 
         for _ in 0..MAX_ATTEMPTS {
             // Try to extract a frame from existing buffer first
@@ -162,7 +165,9 @@ mod tests {
             flags.1 | 0x30,
             flags.2 | 0x30,
         ];
-        let mut frame = vec![0xAB, 0xCD, payload.len() as u8];
+        // Length byte = payload + 2 checksum bytes (matches real wire format)
+        let len_byte = (payload.len() + 2) as u8;
+        let mut frame = vec![0xAB, 0xCD, len_byte];
         frame.extend_from_slice(&payload);
         let sum: u16 = frame.iter().map(|&b| b as u16).sum();
         frame.push((sum >> 8) as u8);

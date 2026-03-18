@@ -35,9 +35,11 @@ AB CD <length> <payload...> <checksum_hi> <checksum_lo>
 ```
 
 - **Header:** `0xAB 0xCD` (2 bytes)
-- **Length:** payload byte count (1 byte)
-- **Payload:** variable length
+- **Length:** byte count of everything after this byte (payload + checksum) (1 byte)
+- **Payload:** `length - 2` bytes
 - **Checksum:** 16-bit big-endian sum of all preceding bytes (header + length + payload)
+
+Total frame size = `2 + 1 + length` bytes.
 
 ## Request: Get Measurement
 
@@ -45,18 +47,18 @@ AB CD <length> <payload...> <checksum_hi> <checksum_lo>
 AB CD 03 5E 01 D9
 ```
 
-- Length: `0x03` (3 payload bytes)
-- Payload: `0x5E 0x01 0xD9`
+- Length: `0x03` (3 = 1 byte command + 2 byte checksum)
+- Command: `0x5E`
 - `0x5E` is the "get measurement" command
 - `0x01 0xD9` is `(0x5E + 379) = 473 = 0x01D9`
 
 ## Response: Measurement Data
 
 ```
-AB CD 0E <14 payload bytes> <checksum_hi> <checksum_lo>
+AB CD 10 <14 payload bytes> <checksum_hi> <checksum_lo>
 ```
 
-Total: 19 bytes. Length byte = `0x0E` (14).
+Total: 19 bytes. Length byte = `0x10` (16 = 14 payload + 2 checksum).
 
 ### Payload Layout (14 bytes)
 
@@ -65,13 +67,17 @@ Total: 19 bytes. Length byte = `0x0E` (14).
 | 0 | Mode | `& 0x0F` |
 | 1 | Range | `& 0x0F` |
 | 2-8 | Display value (7 ASCII chars) | None |
-| 9 | Bar graph high nibble | `& 0x0F` |
-| 10 | Bar graph low nibble | `& 0x0F` |
+| 9 | Bar graph high nibble | Raw |
+| 10 | Bar graph low nibble | Raw |
 | 11 | Flag byte 1 | `& 0x0F` |
 | 12 | Flag byte 2 | `& 0x0F` |
 | 13 | Flag byte 3 | `& 0x0F` |
 
-**Nibble masking:** Bytes 0, 1, 9-13 arrive with `0x30` in the high nibble. Mask with `& 0x0F` to get actual value. Display bytes (2-8) are already valid ASCII and should NOT be masked.
+**Masking (verified against real device):**
+- Bytes 0, 1: mode/range — always mask with `& 0x0F` (may or may not have `0x30` high nibble)
+- Bytes 2-8: display — valid ASCII, no masking
+- Bytes 9-10: progress — raw bytes, no `0x30` prefix observed on real device
+- Bytes 11-13: flags — arrive with `0x30` high nibble, mask with `& 0x0F`
 
 ### Display Value
 

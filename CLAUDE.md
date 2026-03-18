@@ -71,8 +71,8 @@ CP2110 HID bridge: VID 0x10C4, PID 0xEA80, 9600 baud 8N1.
 
 Init sequence (feature reports): enable UART [0x41,0x01], configure [0x50,0x00,0x00,0x25,0x80,0x00,0x00,0x03,0x00,0x00], purge [0x43,0x02].
 
-Request measurement: AB CD 03 5E 01 D9. Response: AB CD + length + 14-byte payload + 2-byte checksum (16-bit BE sum of all preceding bytes).
+Request measurement: AB CD 03 5E 01 D9. Response: AB CD + length + data, where length byte counts everything after itself (payload + 2-byte checksum). For measurements: length=0x10 (16), payload=14 bytes, checksum=2 bytes, total frame=19 bytes. Checksum: 16-bit BE sum of all bytes before checksum.
 
-Payload: byte0=mode(&0x0F), byte1=range(&0x0F), bytes2-8=display(ASCII), bytes9-10=progress(&0x0F), byte11-13=flags(&0x0F).
+Payload: byte0=mode(&0x0F), byte1=range(&0x0F), bytes2-8=display(ASCII), bytes9-10=progress(raw, no masking needed), byte11-13=flags(&0x0F). Note: mode/range bytes may or may not have 0x30 high nibble; always mask. Progress bytes arrive without 0x30 prefix.
 
 Command encoding: [AB, CD, 03, cmd, (cmd+379)>>8, (cmd+379)&0xFF].
