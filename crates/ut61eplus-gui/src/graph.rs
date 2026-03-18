@@ -628,7 +628,7 @@ impl Graph {
                 painter.text(
                     egui::pos2(pos.x + 4.0, pos.y - 2.0),
                     egui::Align2::LEFT_BOTTOM,
-                    format!("A: {y_val:.4} {overlay_unit}"),
+                    format!("A: {t:.2} s / {y_val:.4} {overlay_unit}"),
                     label_font.clone(),
                     cursor_color,
                 );
@@ -639,7 +639,7 @@ impl Graph {
                 painter.text(
                     egui::pos2(pos.x + 4.0, pos.y - 2.0),
                     egui::Align2::LEFT_BOTTOM,
-                    format!("B: {y_val:.4} {overlay_unit}"),
+                    format!("B: {t:.2} s / {y_val:.4} {overlay_unit}"),
                     label_font.clone(),
                     cursor_color,
                 );
