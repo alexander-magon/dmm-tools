@@ -5,7 +5,7 @@ Rust workspace for communicating with the UNI-T UT61E+ multimeter via USB (CP211
 ## Project structure
 
 - `crates/ut61eplus-lib/` — library: CP2110 transport, protocol framing, measurement parsing, device tables
-- `crates/ut61eplus-cli/` — CLI binary: data logging, device enumeration
+- `crates/ut61eplus-cli/` — CLI binary: data logging, device enumeration, guided protocol capture tool
 - `crates/ut61eplus-gui/` — GUI binary: real-time display and plotting (eframe/egui)
 
 ## Build & test
@@ -62,9 +62,18 @@ Rust workspace for communicating with the UNI-T UT61E+ multimeter via USB (CP211
 - `RUST_LOG=ut61eplus_lib=trace` should give complete wire-level debugging
 - Never log at `INFO` or above in hot paths (measurement loop)
 
+### GUI accessibility
+- All colors must be theme-aware — use `ui.visuals().dark_mode` to select darker variants for light backgrounds
+- WCAG 2.1 AA contrast ratios: ≥4.5:1 for text, ≥3:1 for graphical elements (lines, markers)
+- Verify contrast ratios numerically when adding/changing colors (use relative luminance formula)
+- Never rely on color alone — use bold/style, line patterns, or text labels as secondary indicators
+- Minimum font size 11pt throughout
+- Display value strings should use `display_raw` from the meter for stable width (no jitter)
+
 ### Dependencies
 - Keep dependencies minimal and well-maintained
 - Library crate: only `hidapi`, `thiserror`, `log`
+- CLI crate: adds `clap`, `csv`, `serde`, `serde_json`, `chrono`, `env_logger`, `ctrlc`, `console`, `serde_yaml`
 - Avoid pulling in large frameworks for small tasks
 
 ## Protocol reference
@@ -75,7 +84,7 @@ Init sequence (feature reports): enable UART [0x41,0x01], configure [0x50,0x00,0
 
 Request measurement: AB CD 03 5E 01 D9. Response: AB CD + length + data, where length byte counts everything after itself (payload + 2-byte checksum). For measurements: length=0x10 (16), payload=14 bytes, checksum=2 bytes, total frame=19 bytes. Checksum: 16-bit BE sum of all bytes before checksum.
 
-Payload: byte0=mode(raw, no 0x30), byte1=range(&0x0F), bytes2-8=display(ASCII), bytes9-10=progress(raw), byte11-13=flags(&0x0F).
+Payload: byte0=mode(raw, no 0x30), byte1=range(&0x0F), bytes2-8=display(ASCII), bytes9-10=progress(raw), byte11-13=flags(&0x0F). Display value may contain internal spaces for alignment (e.g. "- 55.79" for -55.79) — strip all spaces before parsing as f64. 9600 baud confirmed as only supported rate (~10 Hz max sampling).
 
 Mode bytes (verified): 0x00=ACV, 0x01=ACmV, 0x02=DCV, 0x03=DCmV, 0x04=Hz, 0x05=Duty%, 0x06=Ohm, 0x07=Continuity, 0x08=Diode, 0x09=Capacitance, 0x0A=TempC, 0x0B=TempF, 0x0C=DCuA, 0x0D=ACuA, 0x0E=DCmA, 0x0F=ACmA, 0x10=DCA, 0x11=ACA, 0x12=hFE, 0x14=NCV.
 

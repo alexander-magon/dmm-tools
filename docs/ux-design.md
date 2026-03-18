@@ -31,7 +31,7 @@
 
 ### Top Bar
 
-Compact toolbar row: app title, Connect/Disconnect button, Clear button (resets graph/stats), connection status with device name, settings gear icon (right-aligned).
+Compact toolbar row: app title, Connect/Disconnect button, Pause/Resume button (freezes capture without disconnecting — pauses >gap threshold show gap markers), Clear button (resets graph/stats), connection status with device name and colored dot, settings gear icon (right-aligned).
 
 ### Settings Panel
 
@@ -50,15 +50,16 @@ Settings persist to `~/.config/ut61eplus/settings.json`.
 
 Threshold at ~900px available width:
 
-**Wide (≥ 900px):** Two-column layout.
-- Left column (fixed ~220px): reading display, remote control buttons, mode/range/flags, statistics panel
-- Right column (remaining width): graph toolbar + main graph + minimap, recording bar
+**Wide (≥ 900px):** Two-column layout with resizable panels.
+- Left column (resizable, 180-400px): reading display, remote control buttons, mode/range/flags, statistics panel
+- Right column: graph toolbar + main graph + minimap, drag separator, recording panel
+- Graph/recording split resizable via drag handle
 
 **Narrow (< 900px):** Single-column stack.
 - Reading (compact single line for mode/flags)
-- Statistics (compact line)
+- Statistics (compact line + visible window stats)
 - Graph (toolbar + main + minimap)
-- Recording (single-line toolbar)
+- Recording (resizable via drag handle)
 
 ### Reading Display
 
@@ -89,9 +90,15 @@ Three components stacked vertically:
 - Time window presets: 5s, 10s, 30s, 1m, 5m, 10m
 - LIVE toggle button (green when active)
 - Y:Auto / Y:Fixed toggle — in fixed mode, shows min/max text input fields. Switching to fixed snapshots current auto range unless user previously edited values.
+- **Mean** toggle — dashed horizontal line at visible window average, labeled with value
+- **Min/Max** toggle — sliding window envelope (configurable width in seconds), dashed boundary lines showing value range
+- **Ref** toggle — one or more horizontal reference lines at user-specified values (comma/space/semicolon separated), each labeled. When active, optional **Triggers** toggle shows diamond markers at threshold crossings.
+- **Cursors** toggle — click graph to place cursor A then B (snaps to nearest data point). Draws vertical + horizontal lines at each cursor. Labels show time and value. Toolbar displays ΔT and ΔV between cursors.
 
 **Main graph:**
 - `egui_plot` time series with auto-scaling Y axis (10% padding)
+- Y axis tick labels include unit (e.g. "1.0 mV" not "1.0"), X axis labels include unit ("10 s", "1 m")
+- Crosshair tooltip shows time and value with units
 - In LIVE mode: auto-scrolls to latest data, drag/zoom disabled
 - In browse mode (click LIVE to toggle, or click minimap): drag to pan X, scroll wheel to zoom X (centered on cursor). Y auto-scales to visible data.
 - Scroll while in LIVE mode exits to browse mode
@@ -124,3 +131,13 @@ Three components stacked vertically:
 - Shows sample count and duration while recording
 - Records to in-memory buffer, exported on demand
 - Scrollable sample log showing recent samples (timestamp, value, unit, flags) in monospace. Auto-scrolls to bottom, caps at last 500 entries.
+
+### Accessibility
+
+- All colors are theme-aware — darker variants on light backgrounds, brighter on dark
+- WCAG 2.1 AA contrast ratios verified: ≥4.5:1 for text, ≥3:1 for graphical elements
+- Minimum font size 11pt throughout (WCAG recommends ≥12px)
+- Flag badges use bold text in addition to color for non-color distinction
+- Status dot uses text label alongside color indicator
+- Graph overlays use distinct line styles (solid, dashed-dense, dashed-loose) in addition to color
+- `NO_COLOR=1` env var disables CLI color output
