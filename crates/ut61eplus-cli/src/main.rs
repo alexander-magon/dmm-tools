@@ -695,7 +695,7 @@ fn cmd_capture(output_override: Option<String>, filter: Option<Vec<String>>, lis
         eprintln!();
         eprintln!("{}", style("  Other:").cyan());
         eprintln!("    {:<16} {}", style("range_cycle").bold(), "Cycle through manual ranges on DC V");
-        eprintln!("    {:<16} {}", style("extra_N").bold(), "Freeform captures (Part 4)");
+        eprintln!("    {:<16} {}", style("extra").bold(), "Freeform captures (Part 4)");
         eprintln!();
         eprintln!("Usage: {} {}", style("ut61eplus capture --steps").dim(), style("dcmv,temp,duty").dim());
         return Ok(());
@@ -877,7 +877,7 @@ fn cmd_capture(output_override: Option<String>, filter: Option<Vec<String>>, lis
     }
 
     // --- Part 4: Freeform (skip if filtered) ---
-    if !done && !is_filtered {
+    if !done && (!is_filtered || include("extra")) {
         eprintln!("\n{}", style("━━━ Part 4: Additional Captures (optional) ━━━").bold());
         eprintln!("Set the meter to any mode/state not covered above.\n");
 
