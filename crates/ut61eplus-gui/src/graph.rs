@@ -239,7 +239,6 @@ impl Graph {
             .allow_zoom(Vec2b::new(can_interact, false))
             .allow_scroll(Vec2b::new(false, false))
             .allow_double_click_reset(false)
-            .auto_bounds(Vec2b::new(false, false))
             .include_x(view_min)
             .include_x(view_max)
             .x_axis_label("time (s)");
@@ -248,10 +247,10 @@ impl Graph {
             plot = plot.include_y(y_min).include_y(y_max);
         }
 
-        // Reset plot memory in live mode so it doesn't fight our bounds
-        if self.live {
-            plot = plot.reset();
-        }
+        // In live mode, reset every frame so egui_plot doesn't fight our bounds.
+        // In browse mode, reset only once when entering browse (via view change)
+        // so the user can drag freely, but Y still updates.
+        plot = plot.reset();
 
         let response = plot.show(ui, |plot_ui| {
                 for seg in &raw_segments {
@@ -274,11 +273,29 @@ impl Graph {
                 }
             });
 
-        // If user dragged/zoomed, capture the new view
+        // Handle drag: convert pixel delta to time delta
+        if can_interact && response.response.dragged() {
+            let drag_px = response.response.drag_delta().x;
+            // Convert pixel drag to time using the transform
+            let left = response.transform.value_from_position(
+                response.response.rect.left_top(),
+            );
+            let right = response.transform.value_from_position(
+                response.response.rect.right_top(),
+            );
+            let px_per_sec = response.response.rect.width() as f64
+                / (right.x - left.x).max(1e-6);
+            let time_delta = drag_px as f64 / px_per_sec;
+            self.view_center -= time_delta;
+        }
+
+        // Handle scroll wheel zoom on X axis
         if can_interact {
-            let bounds = response.transform.bounds();
-            self.view_center = (bounds.min()[0] + bounds.max()[0]) / 2.0;
-            self.time_window_secs = bounds.max()[0] - bounds.min()[0];
+            let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+            if scroll.abs() > 0.1 {
+                let factor = if scroll > 0.0 { 0.9 } else { 1.1 };
+                self.time_window_secs = (self.time_window_secs * factor).clamp(2.0, 3600.0);
+            }
         }
 
         // Double-click to return to live mode
@@ -301,38 +318,63 @@ impl Graph {
         let line_color = egui::Color32::from_rgba_premultiplied(200, 100, 100, 150);
         let viewport_color = egui::Color32::from_rgba_premultiplied(100, 150, 255, 80);
 
-        let response = Plot::new("minimap_plot")
-            .height(MINIMAP_HEIGHT)
-            .include_x(data_min)
-            .include_x(data_max)
-            .allow_drag(true)  // enable so we get pointer events
-            .allow_zoom(false)
-            .allow_scroll(false)
-            .auto_bounds(Vec2b::new(false, true))
-            .show_axes(Vec2b::new(true, false))
-            .show_grid(false)
-            .reset() // reset every frame so our drag doesn't move the minimap view
-            .show(ui, |plot_ui| {
-                for seg in &raw_segments {
-                    plot_ui.line(
-                        Line::new(PlotPoints::new(seg.clone())).color(line_color),
-                    );
-                }
+        // Allocate rect for minimap and sense click/drag
+        let (rect, pointer_response) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), MINIMAP_HEIGHT),
+            egui::Sense::click_and_drag(),
+        );
 
-                // Viewport indicator as two vertical lines
-                plot_ui.vline(VLine::new(view_min).color(viewport_color).width(2.0));
-                plot_ui.vline(VLine::new(view_max).color(viewport_color).width(2.0));
-            });
+        // Draw minimap using the painter directly
+        let painter = ui.painter_at(rect);
+        let data_span = (data_max - data_min).max(1e-6);
 
-        // Click or drag on minimap to navigate the main view
-        if let Some(pos) = response.response.interact_pointer_pos() {
-            let clicked_point = response.transform.value_from_position(pos);
+        let time_to_x = |t: f64| -> f32 {
+            rect.left() + ((t - data_min) / data_span) as f32 * rect.width()
+        };
+
+        // Background
+        painter.rect_filled(rect, 0.0, ui.visuals().extreme_bg_color);
+
+        // Draw data lines
+        for seg in &raw_segments {
+            let points: Vec<egui::Pos2> = seg
+                .iter()
+                .map(|&[t, v]| {
+                    let x = time_to_x(t);
+                    // Simple Y mapping: find Y range from all data
+                    let y_frac = if let Some((y_lo, y_hi)) = self.y_range_for_view(data_min, data_max) {
+                        let range = (y_hi - y_lo).max(1e-10);
+                        ((v - y_lo) / range) as f32
+                    } else {
+                        0.5
+                    };
+                    let y = rect.bottom() - y_frac * rect.height();
+                    egui::pos2(x, y)
+                })
+                .collect();
+            for window in points.windows(2) {
+                painter.line_segment(
+                    [window[0], window[1]],
+                    egui::Stroke::new(1.0, line_color),
+                );
+            }
+        }
+
+        // Draw viewport indicator
+        let vp_left = time_to_x(view_min);
+        let vp_right = time_to_x(view_max);
+        let vp_rect = egui::Rect::from_x_y_ranges(vp_left..=vp_right, rect.y_range());
+        painter.rect_filled(vp_rect, 0.0, viewport_color);
+        painter.rect_stroke(vp_rect, 0.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 150, 255)), egui::StrokeKind::Outside);
+
+        // Handle click/drag navigation
+        if let Some(pos) = pointer_response.interact_pointer_pos() {
+            let clicked_t = data_min + ((pos.x - rect.left()) / rect.width()).clamp(0.0, 1.0) as f64 * data_span;
             let half = self.time_window_secs / 2.0;
-            // If viewport would include the latest data point, go live
-            if clicked_point.x + half >= data_max {
+            if clicked_t + half >= data_max {
                 self.live = true;
             } else {
-                self.view_center = clicked_point.x;
+                self.view_center = clicked_t;
                 self.live = false;
             }
         }
