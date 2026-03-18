@@ -74,36 +74,30 @@ impl App {
     const ZOOM_LEVELS: &[u32] = &[75, 100, 125, 150, 175, 200];
 
     fn apply_zoom(&mut self, ctx: &egui::Context) {
-        // Capture OS default on first call
+        // Capture OS default pixels_per_point on first call
         if self.os_ppp.is_none() {
             self.os_ppp = Some(ctx.pixels_per_point());
         }
         let os_ppp = self.os_ppp.unwrap();
-
-        if let Some(pct) = self.settings.zoom_pct {
-            ctx.set_pixels_per_point(os_ppp * pct as f32 / 100.0);
-        }
-        // If None, leave it at OS default (don't call set_pixels_per_point)
+        ctx.set_pixels_per_point(os_ppp * self.settings.zoom_pct as f32 / 100.0);
     }
 
     fn zoom_in(&mut self) {
-        let current = self.settings.zoom_pct.unwrap_or(100);
-        if let Some(&next) = Self::ZOOM_LEVELS.iter().find(|&&z| z > current) {
-            self.settings.zoom_pct = Some(next);
+        if let Some(&next) = Self::ZOOM_LEVELS.iter().find(|&&z| z > self.settings.zoom_pct) {
+            self.settings.zoom_pct = next;
             self.settings.save();
         }
     }
 
     fn zoom_out(&mut self) {
-        let current = self.settings.zoom_pct.unwrap_or(100);
-        if let Some(&prev) = Self::ZOOM_LEVELS.iter().rev().find(|&&z| z < current) {
-            self.settings.zoom_pct = Some(prev);
+        if let Some(&prev) = Self::ZOOM_LEVELS.iter().rev().find(|&&z| z < self.settings.zoom_pct) {
+            self.settings.zoom_pct = prev;
             self.settings.save();
         }
     }
 
     fn zoom_reset(&mut self) {
-        self.settings.zoom_pct = None;
+        self.settings.zoom_pct = 100;
         self.settings.save();
     }
 
@@ -393,25 +387,13 @@ impl App {
 
         ui.horizontal(|ui| {
             ui.label("Zoom:");
-            let current_label = self
-                .settings
-                .zoom_pct
-                .map(|z| format!("{z}%"))
-                .unwrap_or_else(|| "OS default".to_string());
             let mut changed = false;
-            if ui.selectable_label(self.settings.zoom_pct.is_none(), "OS default").clicked() {
-                self.zoom_reset();
-                changed = true;
-            }
             for &level in Self::ZOOM_LEVELS {
                 if ui
-                    .selectable_label(
-                        self.settings.zoom_pct == Some(level),
-                        format!("{level}%"),
-                    )
+                    .selectable_label(self.settings.zoom_pct == level, format!("{level}%"))
                     .clicked()
                 {
-                    self.settings.zoom_pct = Some(level);
+                    self.settings.zoom_pct = level;
                     changed = true;
                 }
             }
@@ -419,7 +401,7 @@ impl App {
                 self.settings.save();
             }
             ui.label(
-                RichText::new(format!("(current: {current_label}, Ctrl+/- to adjust)"))
+                RichText::new("(Ctrl+/- to adjust, Ctrl+0 = 100%)")
                     .small()
                     .color(ui.visuals().weak_text_color()),
             );
