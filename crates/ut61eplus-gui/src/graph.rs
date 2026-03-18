@@ -22,12 +22,45 @@ struct DataPoint {
 
 /// Time window presets.
 pub const TIME_WINDOWS: &[(f64, &str)] = &[
+    (5.0, "5s"),
     (10.0, "10s"),
     (30.0, "30s"),
     (60.0, "1m"),
     (300.0, "5m"),
     (600.0, "10m"),
 ];
+
+/// Choose a nice round interval for time axis labels.
+fn nice_time_interval(span: f64) -> f64 {
+    let target_ticks = 6.0;
+    let raw = span / target_ticks;
+    let nice_values = [1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0];
+    for &v in &nice_values {
+        if v >= raw {
+            return v;
+        }
+    }
+    raw.ceil()
+}
+
+/// Format a time value in seconds as a readable label.
+fn format_time_label(secs: f64) -> String {
+    if secs < 60.0 {
+        format!("{:.0}s", secs)
+    } else if secs < 3600.0 {
+        let m = (secs / 60.0).floor() as u32;
+        let s = (secs % 60.0).floor() as u32;
+        if s == 0 {
+            format!("{m}m")
+        } else {
+            format!("{m}m{s:02}s")
+        }
+    } else {
+        let h = (secs / 3600.0).floor() as u32;
+        let m = ((secs % 3600.0) / 60.0).floor() as u32;
+        format!("{h}h{m:02}m")
+    }
+}
 
 /// Real-time scrolling graph with minimap navigation.
 pub struct Graph {
@@ -233,26 +266,24 @@ impl Graph {
         // Compute Y bounds from visible data
         let y_bounds = self.y_range_for_view(view_min, view_max);
 
-        let mut plot = Plot::new("main_plot")
+        let (y_min, y_max) = y_bounds.unwrap_or((-1.0, 1.0));
+
+        let plot = Plot::new("main_plot")
             .height(ui.available_height().max(60.0))
             .allow_drag(Vec2b::new(can_interact, false))
             .allow_zoom(Vec2b::new(can_interact, false))
             .allow_scroll(Vec2b::new(false, false))
             .allow_double_click_reset(false)
-            .include_x(view_min)
-            .include_x(view_max)
+            .reset()
             .x_axis_label("time (s)");
 
-        if let Some((y_min, y_max)) = y_bounds {
-            plot = plot.include_y(y_min).include_y(y_max);
-        }
-
-        // In live mode, reset every frame so egui_plot doesn't fight our bounds.
-        // In browse mode, reset only once when entering browse (via view change)
-        // so the user can drag freely, but Y still updates.
-        plot = plot.reset();
-
         let response = plot.show(ui, |plot_ui| {
+                // Set exact bounds: our X view range + computed Y range
+                plot_ui.set_plot_bounds(PlotBounds::from_min_max(
+                    [view_min, y_min],
+                    [view_max, y_max],
+                ));
+
                 for seg in &raw_segments {
                     plot_ui.line(
                         Line::new(PlotPoints::new(seg.clone())).color(line_color),
@@ -318,14 +349,22 @@ impl Graph {
         let line_color = egui::Color32::from_rgba_premultiplied(200, 100, 100, 150);
         let viewport_color = egui::Color32::from_rgba_premultiplied(100, 150, 255, 80);
 
-        // Allocate rect for minimap and sense click/drag
-        let (rect, pointer_response) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), MINIMAP_HEIGHT),
+        // Allocate rect for minimap + label space below, with margin for bracket strokes
+        let label_height = 14.0;
+        let margin = 4.0; // room for bracket strokes at edges
+        let total_height = MINIMAP_HEIGHT + label_height + margin * 2.0;
+        let (full_rect, pointer_response) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), total_height),
             egui::Sense::click_and_drag(),
         );
+        // Inset the plot area so brackets at edges have room to render
+        let rect = egui::Rect::from_min_size(
+            egui::pos2(full_rect.left() + margin, full_rect.top() + margin),
+            egui::vec2(full_rect.width() - margin * 2.0, MINIMAP_HEIGHT),
+        );
 
-        // Draw minimap using the painter directly
-        let painter = ui.painter_at(rect);
+        // Use full_rect painter so nothing gets clipped
+        let painter = ui.painter_at(full_rect);
         let data_span = (data_max - data_min).max(1e-6);
 
         let time_to_x = |t: f64| -> f32 {
@@ -360,12 +399,44 @@ impl Graph {
             }
         }
 
-        // Draw viewport indicator
+        // Draw viewport indicator as [ ] bracket markers
         let vp_left = time_to_x(view_min);
         let vp_right = time_to_x(view_max);
-        let vp_rect = egui::Rect::from_x_y_ranges(vp_left..=vp_right, rect.y_range());
-        painter.rect_filled(vp_rect, 0.0, viewport_color);
-        painter.rect_stroke(vp_rect, 0.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 150, 255)), egui::StrokeKind::Outside);
+        let vp_color = egui::Color32::from_rgb(100, 150, 255);
+        let vp_stroke = egui::Stroke::new(2.5, vp_color);
+        let bracket_w = 4.0_f32; // horizontal arm of the bracket
+
+        // Left bracket [
+        painter.line_segment([egui::pos2(vp_left, rect.top()), egui::pos2(vp_left, rect.bottom())], vp_stroke);
+        painter.line_segment([egui::pos2(vp_left, rect.top()), egui::pos2(vp_left + bracket_w, rect.top())], vp_stroke);
+        painter.line_segment([egui::pos2(vp_left, rect.bottom()), egui::pos2(vp_left + bracket_w, rect.bottom())], vp_stroke);
+
+        // Right bracket ]
+        painter.line_segment([egui::pos2(vp_right, rect.top()), egui::pos2(vp_right, rect.bottom())], vp_stroke);
+        painter.line_segment([egui::pos2(vp_right, rect.top()), egui::pos2(vp_right - bracket_w, rect.top())], vp_stroke);
+        painter.line_segment([egui::pos2(vp_right, rect.bottom()), egui::pos2(vp_right - bracket_w, rect.bottom())], vp_stroke);
+
+        // Draw X-axis time labels
+        let label_color = ui.visuals().weak_text_color();
+        let nice_interval = nice_time_interval(data_span);
+        let mut t = (data_min / nice_interval).ceil() * nice_interval;
+        while t <= data_max {
+            let x = time_to_x(t);
+            let label = format_time_label(t);
+            painter.text(
+                egui::pos2(x, rect.bottom() + 2.0),
+                egui::Align2::CENTER_TOP,
+                label,
+                egui::FontId::proportional(9.0),
+                label_color,
+            );
+            // Small tick mark
+            painter.line_segment(
+                [egui::pos2(x, rect.bottom() - 2.0), egui::pos2(x, rect.bottom())],
+                egui::Stroke::new(1.0, label_color),
+            );
+            t += nice_interval;
+        }
 
         // Handle click/drag navigation
         if let Some(pos) = pointer_response.interact_pointer_pos() {
@@ -514,6 +585,6 @@ mod tests {
     #[test]
     fn time_window_presets_exist() {
         assert!(TIME_WINDOWS.len() >= 3);
-        assert_eq!(TIME_WINDOWS[0].1, "10s");
+        assert_eq!(TIME_WINDOWS[0].1, "5s");
     }
 }
