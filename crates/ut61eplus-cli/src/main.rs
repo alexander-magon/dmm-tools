@@ -62,6 +62,7 @@ enum ButtonAction {
     MinMax,
     Rel,
     Range,
+    Auto,
     Select,
     Light,
 }
@@ -73,6 +74,7 @@ impl ButtonAction {
             ButtonAction::MinMax => Command::MinMax,
             ButtonAction::Rel => Command::Rel,
             ButtonAction::Range => Command::Range,
+            ButtonAction::Auto => Command::Auto,
             ButtonAction::Select => Command::Select,
             ButtonAction::Light => Command::Light,
         }
