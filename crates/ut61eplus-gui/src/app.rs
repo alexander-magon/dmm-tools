@@ -228,6 +228,12 @@ impl App {
                     if ui.button("Disconnect").clicked() {
                         self.disconnect();
                     }
+                    if ui.button("Clear").clicked() {
+                        self.start_time = Instant::now();
+                        self.graph.clear();
+                        self.stats.reset();
+                        self.last_measurement = None;
+                    }
                 }
                 ConnectionState::Reconnecting => {
                     ui.add_enabled(false, egui::Button::new("Reconnecting..."));
