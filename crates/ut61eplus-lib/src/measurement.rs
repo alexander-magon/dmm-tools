@@ -38,15 +38,15 @@ pub struct Measurement {
 impl Measurement {
     /// Parse a 14-byte measurement payload.
     ///
-    /// Layout:
-    /// - byte 0:    mode   (& 0x0F)
-    /// - byte 1:    range  (& 0x0F)
+    /// Layout (verified against real device captures):
+    /// - byte 0:    mode   (raw, no masking — does not have 0x30 prefix)
+    /// - byte 1:    range  (& 0x0F — has 0x30 prefix)
     /// - bytes 2-8: display value (7 ASCII chars, no masking needed)
-    /// - byte 9:    progress high nibble (& 0x0F)
-    /// - byte 10:   progress low nibble  (& 0x0F)
-    /// - byte 11:   flag1  (& 0x0F)
-    /// - byte 12:   flag2  (& 0x0F)
-    /// - byte 13:   flag3  (& 0x0F)
+    /// - byte 9:    progress high (raw, no 0x30 prefix)
+    /// - byte 10:   progress low  (raw, no 0x30 prefix)
+    /// - byte 11:   flag1  (& 0x0F — has 0x30 prefix)
+    /// - byte 12:   flag2  (& 0x0F — has 0x30 prefix)
+    /// - byte 13:   flag3  (& 0x0F — has 0x30 prefix)
     pub fn parse(payload: &[u8], table: &dyn DeviceTable) -> Result<Self> {
         if payload.len() < MEASUREMENT_PAYLOAD_LEN {
             return Err(Error::InvalidResponse(format!(
@@ -56,11 +56,13 @@ impl Measurement {
             )));
         }
 
-        let mode_byte = payload[0] & 0x0F;
+        // Mode byte is raw (no 0x30 prefix), range byte has 0x30 prefix
+        let mode_byte = payload[0];
         let range_byte = payload[1] & 0x0F;
         let display_bytes = &payload[2..9];
-        let progress_hi = (payload[9] & 0x0F) as u16;
-        let progress_lo = (payload[10] & 0x0F) as u16;
+        // Progress bytes are raw (no 0x30 prefix observed on real device)
+        let progress_hi = payload[9] as u16;
+        let progress_lo = payload[10] as u16;
         let flag1 = payload[11] & 0x0F;
         let flag2 = payload[12] & 0x0F;
         let flag3 = payload[13] & 0x0F;
@@ -133,14 +135,16 @@ mod tests {
     use crate::tables::ut61e_plus::Ut61ePlusTable;
 
     fn make_payload(mode: u8, range: u8, display: &[u8; 7], progress: (u8, u8), flags: (u8, u8, u8)) -> Vec<u8> {
-        // Add 0x30 high nibble to bytes that need masking
+        // Mode byte is raw (no 0x30 prefix).
+        // Range and flag bytes have 0x30 prefix.
+        // Progress bytes are raw (no 0x30 prefix).
         vec![
-            mode | 0x30,
+            mode,
             range | 0x30,
             display[0], display[1], display[2], display[3],
             display[4], display[5], display[6],
-            progress.0 | 0x30,
-            progress.1 | 0x30,
+            progress.0,
+            progress.1,
             flags.0 | 0x30,
             flags.1 | 0x30,
             flags.2 | 0x30,
@@ -150,8 +154,8 @@ mod tests {
     #[test]
     fn parse_dc_voltage() {
         let table = Ut61ePlusTable::new();
-        // Mode 0x00 (DCV), Range 0x01 (22V), display " 12.345"
-        let payload = make_payload(0x00, 0x01, b" 12.345", (0x05, 0x0A), (0x00, 0x01, 0x00));
+        // Mode 0x02 (DCV), Range 0x01 (22V), display " 12.345"
+        let payload = make_payload(0x02, 0x01, b" 12.345", (0x05, 0x0A), (0x00, 0x01, 0x00));
         let m = Measurement::parse(&payload, &table).unwrap();
         assert_eq!(m.mode, Mode::DcV);
         assert_eq!(m.range, 0x01);
@@ -164,8 +168,8 @@ mod tests {
     #[test]
     fn parse_overload() {
         let table = Ut61ePlusTable::new();
-        // Mode 0x04 (Ohm), Range 0x00 (220Ω), display "    OL "
-        let payload = make_payload(0x04, 0x00, b"    OL ", (0x00, 0x00), (0x00, 0x01, 0x00));
+        // Mode 0x06 (Ohm), Range 0x00 (220Ω), display "    OL "
+        let payload = make_payload(0x06, 0x00, b"    OL ", (0x00, 0x00), (0x00, 0x01, 0x00));
         let m = Measurement::parse(&payload, &table).unwrap();
         assert_eq!(m.mode, Mode::Ohm);
         assert!(matches!(m.value, MeasuredValue::Overload));
@@ -175,7 +179,8 @@ mod tests {
     #[test]
     fn parse_with_hold_flag() {
         let table = Ut61ePlusTable::new();
-        let payload = make_payload(0x00, 0x00, b"  1.234", (0x00, 0x00), (0x01, 0x01, 0x00));
+        // Mode 0x02 (DCV)
+        let payload = make_payload(0x02, 0x00, b"  1.234", (0x00, 0x00), (0x01, 0x01, 0x00));
         let m = Measurement::parse(&payload, &table).unwrap();
         assert!(m.flags.hold);
         assert!(m.flags.auto_range);
@@ -192,7 +197,8 @@ mod tests {
     #[test]
     fn display_format() {
         let table = Ut61ePlusTable::new();
-        let payload = make_payload(0x00, 0x01, b"  5.678", (0x00, 0x00), (0x01, 0x01, 0x00));
+        // Mode 0x02 (DCV)
+        let payload = make_payload(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x01, 0x01, 0x00));
         let m = Measurement::parse(&payload, &table).unwrap();
         let s = m.to_string();
         assert!(s.contains("5.678"));

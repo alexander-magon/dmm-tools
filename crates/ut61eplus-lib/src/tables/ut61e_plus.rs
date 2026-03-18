@@ -147,13 +147,14 @@ impl DeviceTable for Ut61ePlusTable {
             Mode::AcMa => self.lookup(&self.ac_ma, range),
             Mode::DcA => self.lookup(&self.dc_a, range),
             Mode::AcA => self.lookup(&self.ac_a, range),
-            // AC+DC, LPF, Peak modes share the same tables as their base mode
-            Mode::AcDcV | Mode::LpfV | Mode::PeakV => self.lookup(&self.dc_v, range),
-            Mode::AcDcMv | Mode::LpfMv | Mode::PeakMv => self.lookup(&self.dc_mv, range),
-            Mode::AcDcUa | Mode::LpfUa => self.lookup(&self.dc_ua, range),
-            Mode::AcDcMa | Mode::LpfMa => self.lookup(&self.dc_ma, range),
-            Mode::AcDcA | Mode::LpfA => self.lookup(&self.dc_a, range),
-            Mode::Ncv => None, // NCV doesn't have range info
+            // Derived modes share tables with their base mode
+            Mode::AcDcV | Mode::LpfV | Mode::LozV => self.lookup(&self.dc_v, range),
+            Mode::AcDcMv | Mode::LpfMv => self.lookup(&self.dc_mv, range),
+            Mode::AcDcA | Mode::AcDcDcA | Mode::AcDcA2 | Mode::LpfA => {
+                self.lookup(&self.dc_a, range)
+            }
+            // Modes without range tables
+            Mode::Ncv | Mode::Hfe | Mode::Live | Mode::Inrush => None,
         }
     }
 

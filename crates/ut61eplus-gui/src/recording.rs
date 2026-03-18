@@ -101,11 +101,12 @@ mod tests {
 
     fn make_measurement(display: &[u8; 7]) -> Measurement {
         let payload: Vec<u8> = vec![
-            0x30, 0x31,
+            0x02,           // mode: DcV (raw, no 0x30)
+            0x31,           // range: 1 (with 0x30 prefix)
             display[0], display[1], display[2], display[3],
             display[4], display[5], display[6],
-            0x30, 0x30,
-            0x30, 0x31, 0x30,
+            0x00, 0x00,     // progress (raw)
+            0x30, 0x31, 0x30, // flags (with 0x30 prefix)
         ];
         let table = Ut61ePlusTable::new();
         Measurement::parse(&payload, &table).unwrap()
