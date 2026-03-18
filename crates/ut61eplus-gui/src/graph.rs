@@ -94,6 +94,13 @@ pub struct Graph {
     pub show_ref_line: bool,
     ref_line_text: String,
     ref_line_value: f64,
+    /// Measurement cursors: two vertical lines with ΔT/ΔV readout.
+    pub cursors_active: bool,
+    /// Cursor positions in seconds from origin. None = not yet placed.
+    cursor_a: Option<f64>,
+    cursor_b: Option<f64>,
+    /// Which cursor to place next on click.
+    cursor_next_is_b: bool,
 }
 
 impl Graph {
@@ -117,6 +124,10 @@ impl Graph {
             show_ref_line: false,
             ref_line_text: "0".to_string(),
             ref_line_value: 0.0,
+            cursors_active: false,
+            cursor_a: None,
+            cursor_b: None,
+            cursor_next_is_b: false,
         }
     }
 
@@ -339,6 +350,37 @@ impl Graph {
                     }
                 }
             }
+
+            if ui.selectable_label(self.cursors_active, "Cursors").clicked() {
+                self.cursors_active = !self.cursors_active;
+                if !self.cursors_active {
+                    self.cursor_a = None;
+                    self.cursor_b = None;
+                    self.cursor_next_is_b = false;
+                }
+            }
+            if self.cursors_active {
+                if let (Some(ta), Some(tb)) = (self.cursor_a, self.cursor_b) {
+                    let dt = (tb - ta).abs();
+                    let va = self.value_at_time(ta);
+                    let vb = self.value_at_time(tb);
+                    let dv = match (va, vb) {
+                        (Some(a), Some(b)) => format!("{:.4}", (b - a).abs()),
+                        _ => "---".to_string(),
+                    };
+                    ui.label(
+                        egui::RichText::new(format!("ΔT={dt:.2}s ΔV={dv}"))
+                            .small()
+                            .color(egui::Color32::from_rgb(255, 180, 100)),
+                    );
+                } else {
+                    ui.label(
+                        egui::RichText::new("click graph to place cursors")
+                            .small()
+                            .color(ui.visuals().weak_text_color()),
+                    );
+                }
+            }
         });
     }
 
@@ -439,6 +481,9 @@ impl Graph {
         let show_mean = self.show_mean;
         let show_ref = self.show_ref_line;
         let ref_value = self.ref_line_value;
+        let cursors_active = self.cursors_active;
+        let cursor_a = self.cursor_a;
+        let cursor_b = self.cursor_b;
         let visible_stats = self.visible_stats();
 
         let cursor_unit = self.current_unit.clone();
@@ -511,6 +556,17 @@ impl Graph {
                             .style(egui_plot::LineStyle::dashed_dense()),
                     );
                 }
+
+                // Measurement cursors
+                if cursors_active {
+                    let cursor_color = egui::Color32::from_rgb(255, 180, 100);
+                    if let Some(t) = cursor_a {
+                        plot_ui.vline(VLine::new(t).color(cursor_color));
+                    }
+                    if let Some(t) = cursor_b {
+                        plot_ui.vline(VLine::new(t).color(cursor_color));
+                    }
+                }
             });
 
         // Handle drag: convert pixel delta to time delta
@@ -562,6 +618,19 @@ impl Graph {
         // Double-click to return to live mode
         if response.response.double_clicked() {
             self.live = true;
+        }
+
+        // Cursor placement on click (when cursors active and not dragging)
+        if self.cursors_active && response.response.clicked() {
+            if let Some(pos) = response.response.interact_pointer_pos() {
+                let t = response.transform.value_from_position(pos).x;
+                if self.cursor_next_is_b {
+                    self.cursor_b = Some(t);
+                } else {
+                    self.cursor_a = Some(t);
+                }
+                self.cursor_next_is_b = !self.cursor_next_is_b;
+            }
         }
     }
 
@@ -713,6 +782,19 @@ impl Graph {
         } else {
             None
         }
+    }
+
+    /// Find the Y value of the nearest data point to the given time.
+    fn value_at_time(&self, t: f64) -> Option<f64> {
+        let mut best: Option<(f64, f64)> = None; // (distance, value)
+        for point in &self.history {
+            let pt = self.elapsed_secs(point.time);
+            let dist = (pt - t).abs();
+            if best.is_none() || dist < best.unwrap().0 {
+                best = Some((dist, point.value));
+            }
+        }
+        best.map(|(_, v)| v)
     }
 
     pub fn len(&self) -> usize {
