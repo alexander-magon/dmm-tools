@@ -97,6 +97,8 @@ pub struct Graph {
     envelope_window_secs: f64,
     /// Reference lines: show horizontal lines at these values.
     pub show_ref_line: bool,
+    /// Show trigger crossing markers on reference lines.
+    pub show_crossings: bool,
     ref_line_text: String,
     ref_line_values: Vec<f64>,
     /// Measurement cursors: two vertical lines with ΔT/ΔV readout.
@@ -130,6 +132,7 @@ impl Graph {
             envelope_window_text: "1".to_string(),
             envelope_window_secs: 1.0,
             show_ref_line: false,
+            show_crossings: true,
             ref_line_text: String::new(),
             ref_line_values: Vec::new(),
             cursors_active: false,
@@ -374,6 +377,9 @@ impl Graph {
                         .filter_map(|s| s.trim().parse::<f64>().ok())
                         .collect();
                 }
+                if ui.selectable_label(self.show_crossings, "Triggers").clicked() {
+                    self.show_crossings = !self.show_crossings;
+                }
             }
 
             if ui.selectable_label(self.cursors_active, "Cursors").clicked() {
@@ -513,7 +519,8 @@ impl Graph {
         let show_mean = self.show_mean;
         let show_ref = self.show_ref_line;
         let ref_values = self.ref_line_values.clone();
-        let crossings = if show_ref && !ref_values.is_empty() {
+        let show_crossings = self.show_crossings;
+        let crossings = if show_ref && show_crossings && !ref_values.is_empty() {
             self.find_crossings(&ref_values, view_min, view_max)
         } else {
             Vec::new()
