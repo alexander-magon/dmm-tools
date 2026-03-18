@@ -315,7 +315,7 @@ impl App {
                         continue;
                     }
                     if let MeasuredValue::Normal(v) = &m.value {
-                        self.graph.push(*v, &m.mode.to_string(), &m.unit);
+                        self.graph.push(*v, &m.mode.to_string(), m.unit);
                         self.stats.push(*v);
                     }
 
@@ -434,14 +434,23 @@ impl App {
                 RichText::new("USB adapter not found")
                     .color(warn_color),
             );
+            let platform_hint = if cfg!(target_os = "linux") {
+                "Check that the CP2110 USB adapter is plugged in.\n\
+                 On Linux, ensure the udev rule is installed:\n\
+                 sudo cp udev/99-cp2110-unit.rules /etc/udev/rules.d/\n\
+                 sudo udevadm control --reload-rules\n\n\
+                 Click \"Connect\" after resolving the issue."
+            } else if cfg!(target_os = "windows") {
+                "Check that the CP2110 USB adapter is plugged in.\n\
+                 On Windows, ensure the CP2110 driver is installed.\n\
+                 Download from: silabs.com/developers/usb-to-uart-bridge-vcp-drivers\n\n\
+                 Click \"Connect\" after resolving the issue."
+            } else {
+                "Check that the CP2110 USB adapter is plugged in.\n\n\
+                 Click \"Connect\" after resolving the issue."
+            };
             ui.label(
-                RichText::new(
-                    "Check that the CP2110 USB adapter is plugged in.\n\
-                     On Linux, ensure the udev rule is installed:\n\
-                     sudo cp udev/99-cp2110-unit.rules /etc/udev/rules.d/\n\
-                     sudo udevadm control --reload-rules\n\n\
-                     Click \"Connect\" after resolving the issue."
-                )
+                RichText::new(platform_hint)
                 .small()
                 .color(ui.visuals().weak_text_color()),
             );
@@ -876,11 +885,11 @@ impl App {
     }
 
     fn poll_export_result(&mut self) {
-        if let Some(rx) = &self.export_result_rx {
-            if let Ok((msg, is_error)) = rx.try_recv() {
-                self.toast = Some((msg, is_error, Instant::now()));
-                self.export_result_rx = None;
-            }
+        if let Some(rx) = &self.export_result_rx
+            && let Ok((msg, is_error)) = rx.try_recv()
+        {
+            self.toast = Some((msg, is_error, Instant::now()));
+            self.export_result_rx = None;
         }
     }
 }
@@ -894,10 +903,10 @@ impl eframe::App for App {
         self.poll_export_result();
 
         // Expire toast after 4 seconds
-        if let Some((_, _, when)) = &self.toast {
-            if when.elapsed().as_secs() >= 4 {
-                self.toast = None;
-            }
+        if let Some((_, _, when)) = &self.toast
+            && when.elapsed().as_secs() >= 4
+        {
+            self.toast = None;
         }
 
         // Auto-connect on first frame if enabled
