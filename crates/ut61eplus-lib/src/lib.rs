@@ -42,10 +42,26 @@ impl<T: Transport> Dmm<T> {
     }
 
     /// Send a button-press command to the meter.
+    ///
+    /// After sending, drains any response/ack from the meter to avoid
+    /// stale bytes confusing the next measurement request.
     pub fn send_command(&mut self, command: Command) -> Result<()> {
         let cmd = command.encode();
         debug!("sending command: {command:?}");
         self.transport.write(&cmd)?;
+
+        // Drain any ack/response the meter sends back.
+        // Use short timeout — we just need to clear the buffer.
+        self.rx_buf.clear();
+        let mut tmp = [0u8; 64];
+        loop {
+            let n = self.transport.read_timeout(&mut tmp, 100)?;
+            if n == 0 {
+                break;
+            }
+            debug!("drained {} bytes after command", n);
+        }
+
         Ok(())
     }
 

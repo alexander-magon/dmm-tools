@@ -73,6 +73,18 @@ pub struct Graph {
     pub live: bool,
     /// User-controlled view center (seconds from origin). Used when not live.
     view_center: f64,
+    /// When true, Y axis uses fixed min/max instead of auto-scaling.
+    pub y_axis_fixed: bool,
+    /// Fixed Y-axis minimum (editable text buffer for UI).
+    y_min_text: String,
+    /// Fixed Y-axis maximum (editable text buffer for UI).
+    y_max_text: String,
+    /// Parsed fixed Y-axis min.
+    y_fixed_min: f64,
+    /// Parsed fixed Y-axis max.
+    y_fixed_max: f64,
+    /// Whether the user has manually set Y-axis values this session.
+    y_user_set: bool,
 }
 
 impl Graph {
@@ -84,6 +96,12 @@ impl Graph {
             time_window_secs: 60.0,
             live: true,
             view_center: 0.0,
+            y_axis_fixed: false,
+            y_min_text: "-1".to_string(),
+            y_max_text: "1".to_string(),
+            y_fixed_min: -1.0,
+            y_fixed_max: 1.0,
+            y_user_set: false,
         }
     }
 
@@ -112,6 +130,8 @@ impl Graph {
         self.current_mode = None;
         self.origin = None;
         self.live = true;
+        self.y_axis_fixed = false;
+        self.y_user_set = false;
     }
 
     fn elapsed_secs(&self, t: Instant) -> f64 {
@@ -197,7 +217,7 @@ impl Graph {
         gaps
     }
 
-    /// Render toolbar (time window buttons + live toggle).
+    /// Render toolbar (time window buttons + live toggle + Y-axis controls).
     pub fn show_toolbar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
@@ -229,11 +249,78 @@ impl Graph {
             {
                 self.live = !self.live;
             }
+
+            ui.separator();
+
+            // Y-axis mode toggle
+            let y_label = if self.y_axis_fixed { "Y:Fixed" } else { "Y:Auto" };
+            if ui.selectable_label(self.y_axis_fixed, y_label).clicked() {
+                if !self.y_axis_fixed && !self.y_user_set {
+                    // Switching to fixed: snapshot current auto-scaled range
+                    let (view_min, view_max) = self.view_bounds();
+                    if let Some((y_lo, y_hi)) = self.y_range_for_view_auto(view_min, view_max) {
+                        self.y_fixed_min = y_lo;
+                        self.y_fixed_max = y_hi;
+                        self.y_min_text = format!("{y_lo:.4}");
+                        self.y_max_text = format!("{y_hi:.4}");
+                    }
+                }
+                self.y_axis_fixed = !self.y_axis_fixed;
+            }
+
+            if self.y_axis_fixed {
+                let field_width = 50.0;
+                let changed_min = ui
+                    .add(egui::TextEdit::singleline(&mut self.y_min_text).desired_width(field_width))
+                    .changed();
+                ui.label(
+                    egui::RichText::new("..").small().color(ui.visuals().weak_text_color()),
+                );
+                let changed_max = ui
+                    .add(egui::TextEdit::singleline(&mut self.y_max_text).desired_width(field_width))
+                    .changed();
+
+                if changed_min {
+                    if let Ok(v) = self.y_min_text.parse::<f64>() {
+                        self.y_fixed_min = v;
+                        self.y_user_set = true;
+                    }
+                }
+                if changed_max {
+                    if let Ok(v) = self.y_max_text.parse::<f64>() {
+                        self.y_fixed_max = v;
+                        self.y_user_set = true;
+                    }
+                }
+            }
         });
+    }
+
+    /// Auto-scaled Y range (ignoring fixed mode setting). Used to snapshot
+    /// current auto range when switching to fixed mode.
+    fn y_range_for_view_auto(&self, x_min: f64, x_max: f64) -> Option<(f64, f64)> {
+        let mut y_min = f64::INFINITY;
+        let mut y_max = f64::NEG_INFINITY;
+        for point in &self.history {
+            let t = self.elapsed_secs(point.time);
+            if t >= x_min && t <= x_max {
+                y_min = y_min.min(point.value);
+                y_max = y_max.max(point.value);
+            }
+        }
+        if y_min.is_infinite() {
+            return None;
+        }
+        let range = (y_max - y_min).max(1e-6);
+        let pad = range * 0.1;
+        Some((y_min - pad, y_max + pad))
     }
 
     /// Compute Y range from data points visible in the given X range, with padding.
     fn y_range_for_view(&self, x_min: f64, x_max: f64) -> Option<(f64, f64)> {
+        if self.y_axis_fixed {
+            return Some((self.y_fixed_min, self.y_fixed_max));
+        }
         let mut y_min = f64::INFINITY;
         let mut y_max = f64::NEG_INFINITY;
         for point in &self.history {
@@ -320,12 +407,33 @@ impl Graph {
             self.view_center -= time_delta;
         }
 
-        // Handle scroll wheel zoom on X axis
+        // Handle scroll wheel zoom on X axis — zoom centered on cursor position
         if can_interact {
             let scroll = ui.input(|i| i.smooth_scroll_delta.y);
             if scroll.abs() > 0.1 {
                 let factor = if scroll > 0.0 { 0.9 } else { 1.1 };
-                self.time_window_secs = (self.time_window_secs * factor).clamp(2.0, 3600.0);
+                // Find cursor X position in time coordinates for centered zoom
+                if let Some(hover_pos) = response.response.hover_pos() {
+                    let cursor_t = response.transform.value_from_position(hover_pos).x;
+                    let old_half = self.time_window_secs / 2.0;
+                    self.time_window_secs = (self.time_window_secs * factor).clamp(2.0, 3600.0);
+                    let new_half = self.time_window_secs / 2.0;
+                    // Adjust center so cursor stays at same relative position
+                    let rel = (cursor_t - (self.view_center - old_half)) / (old_half * 2.0);
+                    self.view_center = cursor_t - (rel - 0.5) * new_half * 2.0;
+                } else {
+                    self.time_window_secs = (self.time_window_secs * factor).clamp(2.0, 3600.0);
+                }
+            }
+        }
+
+        // Scroll while in live mode → exit live mode to browse
+        if self.live {
+            let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+            if scroll.abs() > 0.1 {
+                let (_, data_max) = self.data_time_range();
+                self.view_center = data_max - self.time_window_secs / 2.0;
+                self.live = false;
             }
         }
 
@@ -347,7 +455,6 @@ impl Graph {
         let (view_min, view_max) = self.view_bounds();
 
         let line_color = egui::Color32::from_rgba_premultiplied(200, 100, 100, 150);
-        let viewport_color = egui::Color32::from_rgba_premultiplied(100, 150, 255, 80);
 
         // Allocate rect for minimap + label space below, with margin for bracket strokes
         let label_height = 14.0;
@@ -461,6 +568,29 @@ impl Graph {
         });
         ui.add_space(4.0);
         self.show_minimap(ui);
+    }
+
+    /// Compute min/max/avg/count for data points visible in the current view.
+    pub fn visible_stats(&self) -> Option<(f64, f64, f64, usize)> {
+        let (x_min, x_max) = self.view_bounds();
+        let mut min = f64::INFINITY;
+        let mut max = f64::NEG_INFINITY;
+        let mut sum = 0.0;
+        let mut count = 0usize;
+        for point in &self.history {
+            let t = self.elapsed_secs(point.time);
+            if t >= x_min && t <= x_max {
+                min = min.min(point.value);
+                max = max.max(point.value);
+                sum += point.value;
+                count += 1;
+            }
+        }
+        if count > 0 {
+            Some((min, max, sum / count as f64, count))
+        } else {
+            None
+        }
     }
 
     pub fn len(&self) -> usize {

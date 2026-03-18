@@ -60,6 +60,8 @@ pub struct Settings {
     pub auto_connect: bool,
     /// UI zoom level as percentage relative to OS default (100 = OS default).
     pub zoom_pct: u32,
+    /// Delay between measurement requests in milliseconds (0 = fastest possible).
+    pub sample_interval_ms: u32,
 }
 
 impl Default for Settings {
@@ -73,6 +75,7 @@ impl Default for Settings {
             query_device_name: true,
             auto_connect: true,
             zoom_pct: 100,
+            sample_interval_ms: 0,
         }
     }
 }
@@ -128,6 +131,7 @@ mod tests {
             query_device_name: false,
             auto_connect: false,
             zoom_pct: 150,
+            sample_interval_ms: 500,
         };
         let json = serde_json::to_string(&s).unwrap();
         let deserialized: Settings = serde_json::from_str(&json).unwrap();
@@ -137,6 +141,7 @@ mod tests {
         assert!(!deserialized.show_recording);
         assert_eq!(deserialized.graph_time_window, GraphTimeWindow::Minutes5);
         assert_eq!(deserialized.zoom_pct, 150);
+        assert_eq!(deserialized.sample_interval_ms, 500);
     }
 
     #[test]

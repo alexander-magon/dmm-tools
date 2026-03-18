@@ -1,6 +1,7 @@
 use eframe::egui::{self, Color32, RichText, Ui};
 use log::{error, info, warn};
 use std::sync::mpsc;
+use ut61eplus_lib::command::Command;
 use ut61eplus_lib::measurement::{MeasuredValue, Measurement};
 
 use crate::display;
@@ -15,6 +16,8 @@ pub enum DmmMessage {
     Connected(String), // device name
     Disconnected(String),
     Error(String),
+    /// Waiting for meter response (consecutive timeout count).
+    WaitingForMeter(u32),
 }
 
 /// Connection state.
@@ -31,6 +34,9 @@ pub struct App {
 
     connection_state: ConnectionState,
     device_name: Option<String>,
+    last_error: Option<String>,
+    /// Consecutive timeout count (0 = not waiting).
+    waiting_timeouts: u32,
     last_measurement: Option<Measurement>,
 
     graph: Graph,
@@ -39,6 +45,7 @@ pub struct App {
 
     rx: Option<mpsc::Receiver<DmmMessage>>,
     stop_tx: Option<mpsc::Sender<()>>,
+    cmd_tx: Option<mpsc::Sender<Command>>,
     first_frame: bool,
     /// OS default pixels_per_point, captured on first frame.
     os_ppp: Option<f32>,
@@ -52,12 +59,15 @@ impl App {
             settings_open: false,
             connection_state: ConnectionState::Disconnected,
             device_name: None,
+            last_error: None,
+            waiting_timeouts: 0,
             last_measurement: None,
             graph: Graph::new(),
             stats: Stats::new(),
             recording: Recording::new(),
             rx: None,
             stop_tx: None,
+            cmd_tx: None,
             first_frame: true,
             os_ppp: None,
         }
@@ -124,10 +134,13 @@ impl App {
 
         let (msg_tx, msg_rx) = mpsc::channel();
         let (stop_tx, stop_rx) = mpsc::channel();
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>();
         self.rx = Some(msg_rx);
         self.stop_tx = Some(stop_tx);
+        self.cmd_tx = Some(cmd_tx);
         let ctx_clone = ctx.clone();
         let query_name = self.settings.query_device_name;
+        let sample_interval_ms = self.settings.sample_interval_ms;
 
         std::thread::spawn(move || {
             info!("background thread: connecting to device");
@@ -149,20 +162,38 @@ impl App {
                 }
             };
 
+            let mut consecutive_timeouts: u32 = 0;
             loop {
                 if stop_rx.try_recv().is_ok() {
                     info!("background thread: stop signal received");
                     break;
                 }
 
+                // Process any pending remote commands
+                while let Ok(cmd) = cmd_rx.try_recv() {
+                    if let Err(e) = dmm.send_command(cmd) {
+                        warn!("background thread: command failed: {e}");
+                    }
+                }
+
                 match dmm.request_measurement() {
                     Ok(m) => {
+                        consecutive_timeouts = 0;
                         if msg_tx.send(DmmMessage::Measurement(m)).is_err() {
                             break;
                         }
                     }
                     Err(ut61eplus_lib::error::Error::Timeout) => {
-                        warn!("background thread: measurement timeout");
+                        consecutive_timeouts += 1;
+                        warn!("background thread: measurement timeout ({consecutive_timeouts})");
+                        let _ = msg_tx.send(DmmMessage::WaitingForMeter(consecutive_timeouts));
+                        ctx_clone.request_repaint();
+                        if consecutive_timeouts >= 5 {
+                            let _ = msg_tx.send(DmmMessage::Error(
+                                "No response from meter — is USB mode enabled?".to_string(),
+                            ));
+                            ctx_clone.request_repaint();
+                        }
                     }
                     Err(e) => {
                         error!("background thread: device error: {e}");
@@ -194,7 +225,11 @@ impl App {
                 }
 
                 ctx_clone.request_repaint();
-                std::thread::sleep(std::time::Duration::from_millis(300));
+                if sample_interval_ms > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(
+                        sample_interval_ms as u64,
+                    ));
+                }
             }
         });
     }
@@ -204,6 +239,7 @@ impl App {
             let _ = tx.send(());
         }
         self.rx = None;
+        self.cmd_tx = None;
         self.connection_state = ConnectionState::Disconnected;
         self.device_name = None;
     }
@@ -222,11 +258,15 @@ impl App {
                 DmmMessage::Connected(name) => {
                     self.connection_state = ConnectionState::Connected;
                     self.device_name = if name.is_empty() { None } else { Some(name.clone()) };
-                    // Don't clear graph/stats on reconnect — timeline is continuous.
-                    // User can manually Clear if they want a fresh start.
+                    self.last_error = None;
                     info!("UI: connected to {name}");
                 }
+                DmmMessage::WaitingForMeter(count) => {
+                    self.waiting_timeouts = count;
+                }
                 DmmMessage::Measurement(m) => {
+                    self.last_error = None;
+                    self.waiting_timeouts = 0;
                     if let MeasuredValue::Normal(v) = &m.value {
                         self.graph.push(*v, &m.mode.to_string());
                         self.stats.push(*v);
@@ -241,6 +281,7 @@ impl App {
                 }
                 DmmMessage::Error(e) => {
                     error!("UI: error: {e}");
+                    self.last_error = Some(e);
                     if self.connection_state == ConnectionState::Disconnected {
                         clear_channel = true;
                     }
@@ -251,6 +292,125 @@ impl App {
         if clear_channel {
             self.rx = None;
             self.stop_tx = None;
+        }
+    }
+
+    fn send_command(&self, cmd: Command) {
+        if let Some(tx) = &self.cmd_tx {
+            let _ = tx.send(cmd);
+        }
+    }
+
+    fn show_remote_controls(&mut self, ui: &mut Ui) {
+        // Only show controls when we have actual measurement data
+        if self.connection_state != ConnectionState::Connected || self.last_measurement.is_none() {
+            return;
+        }
+        let flags = self.last_measurement.as_ref().map(|m| m.flags);
+        let active_color = Color32::from_rgb(100, 180, 255);
+
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 3.0;
+
+            let hold = flags.is_some_and(|f| f.hold);
+            let rel = flags.is_some_and(|f| f.rel);
+            let manual_range = flags.is_some_and(|f| !f.auto_range);
+            let auto = flags.is_some_and(|f| f.auto_range);
+            let min_max = flags.is_some_and(|f| f.min || f.max);
+            let peak = flags.is_some_and(|f| f.peak_min || f.peak_max);
+
+            // Buttons with protocol feedback (flag-based state)
+            for &(label, active, cmd) in &[
+                ("HOLD", hold, Command::Hold),
+                ("REL", rel, Command::Rel),
+                ("RANGE", manual_range, Command::Range),
+                ("AUTO", auto, Command::Auto),
+                ("MIN/MAX", min_max, Command::MinMax),
+                ("PEAK", peak, Command::PeakMinMax),
+            ] {
+                let text = if active {
+                    RichText::new(label).small().color(active_color).strong()
+                } else {
+                    RichText::new(label).small()
+                };
+                if ui.add(egui::Button::new(text)).clicked() {
+                    self.send_command(cmd);
+                }
+            }
+
+            // SELECT: mode cycle — no toggle state, mode is visible in reading
+            if ui
+                .add(egui::Button::new(RichText::new("SELECT").small()))
+                .clicked()
+            {
+                self.send_command(Command::Select);
+            }
+
+            // LIGHT: no protocol feedback for backlight state
+            if ui
+                .add(egui::Button::new(RichText::new("LIGHT").small()))
+                .clicked()
+            {
+                self.send_command(Command::Light);
+            }
+        });
+    }
+
+    fn show_connection_help(&self, ui: &mut Ui) {
+        // Show waiting indicator before error threshold
+        if self.waiting_timeouts > 0 && self.last_error.is_none() {
+            ui.add_space(4.0);
+            let dots = ".".repeat((self.waiting_timeouts as usize % 4) + 1);
+            ui.label(
+                RichText::new(format!("Waiting for meter{dots}"))
+                    .color(Color32::from_rgb(230, 160, 40)),
+            );
+            return;
+        }
+
+        let error = match &self.last_error {
+            Some(e) => e.clone(),
+            None => return,
+        };
+
+        ui.add_space(8.0);
+
+        let is_device_not_found = error.contains("not found");
+
+        if is_device_not_found {
+            // HID device not found — dongle issue
+            ui.label(
+                RichText::new("USB adapter not found")
+                    .color(Color32::from_rgb(230, 160, 40)),
+            );
+            ui.label(
+                RichText::new(
+                    "Check that the CP2110 USB adapter is plugged in.\n\
+                     On Linux, ensure the udev rule is installed:\n\
+                     sudo cp udev/99-cp2110-unit.rules /etc/udev/rules.d/\n\
+                     sudo udevadm control --reload-rules\n\n\
+                     Click \"Connect\" after resolving the issue."
+                )
+                .small()
+                .color(ui.visuals().weak_text_color()),
+            );
+        } else {
+            // Dongle found but meter not responding
+            ui.label(
+                RichText::new("No response from meter")
+                    .color(Color32::from_rgb(230, 160, 40)),
+            );
+            ui.label(
+                RichText::new(
+                    "The USB adapter is connected but the meter \n\
+                     isn't responding. To enable data transmission:\n\
+                     1. Insert the USB module into the meter\n\
+                     2. Long press the USB/Hz button\n\
+                     3. The S icon appears on the LCD"
+                )
+                .small()
+                .color(ui.visuals().weak_text_color()),
+            );
         }
     }
 
@@ -369,6 +529,33 @@ impl App {
         });
 
         ui.horizontal(|ui| {
+            ui.label("Sample interval:");
+            let mut changed = false;
+            for &ms in &[0u32, 100, 300, 500, 1000, 2000] {
+                let label = if ms == 0 {
+                    "Fastest".to_string()
+                } else {
+                    format!("{ms}ms")
+                };
+                if ui
+                    .selectable_label(self.settings.sample_interval_ms == ms, label)
+                    .clicked()
+                {
+                    self.settings.sample_interval_ms = ms;
+                    changed = true;
+                }
+            }
+            if changed {
+                self.settings.save();
+            }
+            ui.label(
+                RichText::new("(requires reconnect)")
+                    .small()
+                    .color(ui.visuals().weak_text_color()),
+            );
+        });
+
+        ui.horizontal(|ui| {
             ui.label("Zoom:");
             let mut changed = false;
             for &level in Self::ZOOM_LEVELS {
@@ -402,32 +589,69 @@ impl App {
 
         let fmt = |v: Option<f64>| -> String {
             match v {
-                Some(val) => format!("{val:.4} {unit}"),
-                None => "---".to_string(),
+                Some(val) => format!("{val:>10.4} {unit}"),
+                None => format!("{:>10} {unit}", "---"),
             }
         };
 
+        // Visible window stats (from graph)
+        let vis = self.graph.visible_stats();
+
         if compact {
             ui.horizontal(|ui| {
-                ui.label(format!(
-                    "Min: {}  Max: {}  Avg: {}  ({})",
-                    fmt(self.stats.min),
-                    fmt(self.stats.max),
-                    fmt(self.stats.avg()),
-                    self.stats.count,
-                ));
+                ui.label(
+                    RichText::new(format!(
+                        "Min:{}  Max:{}  Avg:{}  ({})",
+                        fmt(self.stats.min),
+                        fmt(self.stats.max),
+                        fmt(self.stats.avg()),
+                        self.stats.count,
+                    ))
+                    .font(egui::FontId::monospace(12.0)),
+                );
                 if ui.small_button("Reset").clicked() {
                     self.stats.reset();
                 }
             });
         } else {
             ui.label(RichText::new("Statistics").strong().small());
-            ui.label(format!("Min: {}", fmt(self.stats.min)));
-            ui.label(format!("Max: {}", fmt(self.stats.max)));
-            ui.label(format!("Avg: {}", fmt(self.stats.avg())));
+            ui.label(
+                RichText::new(format!("Min:{}", fmt(self.stats.min)))
+                    .font(egui::FontId::monospace(12.0)),
+            );
+            ui.label(
+                RichText::new(format!("Max:{}", fmt(self.stats.max)))
+                    .font(egui::FontId::monospace(12.0)),
+            );
+            ui.label(
+                RichText::new(format!("Avg:{}", fmt(self.stats.avg())))
+                    .font(egui::FontId::monospace(12.0)),
+            );
             ui.label(format!("Count: {}", self.stats.count));
             if ui.small_button("Reset").clicked() {
                 self.stats.reset();
+            }
+
+            // Windowed stats for visible graph interval
+            if let Some((vmin, vmax, vavg, vcount)) = vis {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("Visible window")
+                        .strong()
+                        .small()
+                        .color(ui.visuals().weak_text_color()),
+                );
+                ui.label(
+                    RichText::new(format!(
+                        "Min:{} Max:{} Avg:{} ({})",
+                        fmt(Some(vmin)),
+                        fmt(Some(vmax)),
+                        fmt(Some(vavg)),
+                        vcount,
+                    ))
+                    .font(egui::FontId::monospace(10.0))
+                    .color(ui.visuals().weak_text_color()),
+                );
             }
         }
     }
@@ -439,32 +663,46 @@ impl App {
             "\u{25CF} Record"
         };
 
-        if compact {
-            ui.horizontal(|ui| {
-                if ui.button(btn_label).clicked() {
-                    self.recording.toggle();
-                }
-                if ui.button("Export").clicked() {
-                    self.export_csv();
-                }
-                ui.label(format!("{} smp", self.recording.samples.len()));
-                if self.recording.active {
-                    ui.label(format!("{:.0}s", self.recording.duration_secs()));
-                }
-            });
-        } else {
-            ui.horizontal(|ui| {
-                if ui.button(btn_label).clicked() {
-                    self.recording.toggle();
-                }
-                if ui.button("Export CSV").clicked() {
-                    self.export_csv();
-                }
-            });
-            ui.label(format!("Samples: {}", self.recording.samples.len()));
-            if self.recording.active {
-                ui.label(format!("Duration: {:.0}s", self.recording.duration_secs()));
+        ui.horizontal(|ui| {
+            if ui.button(btn_label).clicked() {
+                self.recording.toggle();
             }
+            if ui.button("Export CSV").clicked() {
+                self.export_csv();
+            }
+            let count = self.recording.samples.len();
+            if self.recording.active {
+                ui.label(format!("{count} smp | {:.0}s", self.recording.duration_secs()));
+            } else if count > 0 {
+                ui.label(format!("{count} smp"));
+            }
+        });
+
+        // Scrollable sample log (skip in compact mode if few samples)
+        if !self.recording.samples.is_empty() && (!compact || self.recording.samples.len() > 0) {
+            let max_height = if compact { 80.0 } else { 150.0 };
+            egui::ScrollArea::vertical()
+                .max_height(max_height)
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    let start = self.recording.samples.len().saturating_sub(500);
+                    for s in &self.recording.samples[start..] {
+                        let time = s.wall_time.format("%H:%M:%S%.3f");
+                        let flags = if s.flags.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" [{}]", s.flags)
+                        };
+                        ui.label(
+                            RichText::new(format!(
+                                "{time}  {val:>10} {unit}{flags}",
+                                val = s.value_str,
+                                unit = s.unit,
+                            ))
+                            .font(egui::FontId::monospace(11.0)),
+                        );
+                    }
+                });
         }
     }
 
@@ -542,6 +780,8 @@ impl eframe::App for App {
                 .resizable(false)
                 .show(ctx, |ui| {
                     display::show_reading(ui, self.last_measurement.as_ref());
+                    self.show_remote_controls(ui);
+                    self.show_connection_help(ui);
                     ui.add_space(8.0);
 
                     if self.settings.show_stats {
@@ -571,6 +811,8 @@ impl eframe::App for App {
             // Narrow: single column — stats under reading (they're related)
             egui::CentralPanel::default().show(ctx, |ui| {
                 display::show_reading_compact(ui, self.last_measurement.as_ref());
+                self.show_remote_controls(ui);
+                self.show_connection_help(ui);
 
                 if self.settings.show_stats {
                     ui.separator();

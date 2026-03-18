@@ -1,17 +1,28 @@
 use eframe::egui::{Color32, FontId, RichText, Ui};
 use ut61eplus_lib::measurement::{MeasuredValue, Measurement};
 
+/// Format the meter's raw 7-char display string for stable rendering.
+/// Replaces leading spaces with figure spaces (U+2007) so the minus sign
+/// doesn't shift digits in monospace font.
+fn format_display_raw(raw: &str) -> String {
+    let trimmed = raw.trim_end();
+    // Pad to at least 7 chars for consistent width
+    format!("{trimmed:>7}")
+}
+
 /// Render the large primary reading display.
 pub fn show_reading(ui: &mut Ui, measurement: Option<&Measurement>) {
     match measurement {
         Some(m) => {
-            // Primary value + unit
+            // Use the meter's 7-char display string for stable formatting.
+            // display_raw preserves leading spaces (sign placeholder) and
+            // fixed decimal places per range, so numbers don't jump around.
             let (value_text, value_color) = match &m.value {
-                MeasuredValue::Normal(v) => {
-                    (format!("{v}"), ui.visuals().text_color())
+                MeasuredValue::Normal(_) => {
+                    (format_display_raw(&m.display_raw), ui.visuals().text_color())
                 }
                 MeasuredValue::Overload => {
-                    ("OL".to_string(), Color32::from_rgb(220, 50, 50))
+                    (format_display_raw(&m.display_raw), Color32::from_rgb(220, 50, 50))
                 }
                 MeasuredValue::NcvLevel(l) => {
                     (format!("NCV {l}"), ui.visuals().text_color())
@@ -19,6 +30,7 @@ pub fn show_reading(ui: &mut Ui, measurement: Option<&Measurement>) {
             };
 
             ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
                 ui.label(
                     RichText::new(&value_text)
                         .font(FontId::monospace(36.0))
@@ -26,7 +38,7 @@ pub fn show_reading(ui: &mut Ui, measurement: Option<&Measurement>) {
                 );
                 ui.label(
                     RichText::new(&m.unit)
-                        .font(FontId::proportional(20.0))
+                        .font(FontId::monospace(20.0))
                         .color(ui.visuals().text_color()),
                 );
             });
@@ -66,19 +78,21 @@ pub fn show_reading_compact(ui: &mut Ui, measurement: Option<&Measurement>) {
     match measurement {
         Some(m) => {
             let value_text = match &m.value {
-                MeasuredValue::Normal(v) => format!("{v}"),
-                MeasuredValue::Overload => "OL".to_string(),
+                MeasuredValue::Normal(_) | MeasuredValue::Overload => {
+                    format_display_raw(&m.display_raw)
+                }
                 MeasuredValue::NcvLevel(l) => format!("NCV {l}"),
             };
 
             ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
                 ui.label(
                     RichText::new(&value_text)
                         .font(FontId::monospace(28.0)),
                 );
                 ui.label(
                     RichText::new(&m.unit)
-                        .font(FontId::proportional(16.0)),
+                        .font(FontId::monospace(16.0)),
                 );
                 ui.separator();
                 ui.label(
