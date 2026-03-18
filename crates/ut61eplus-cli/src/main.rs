@@ -60,11 +60,15 @@ enum OutputFormat {
 enum ButtonAction {
     Hold,
     MinMax,
+    ExitMinMax,
     Rel,
     Range,
     Auto,
     Select,
+    Select2,
     Light,
+    PeakMinMax,
+    ExitPeak,
 }
 
 impl ButtonAction {
@@ -72,11 +76,15 @@ impl ButtonAction {
         match self {
             ButtonAction::Hold => Command::Hold,
             ButtonAction::MinMax => Command::MinMax,
+            ButtonAction::ExitMinMax => Command::ExitMinMax,
             ButtonAction::Rel => Command::Rel,
             ButtonAction::Range => Command::Range,
             ButtonAction::Auto => Command::Auto,
             ButtonAction::Select => Command::Select,
+            ButtonAction::Select2 => Command::Select2,
             ButtonAction::Light => Command::Light,
+            ButtonAction::PeakMinMax => Command::PeakMinMax,
+            ButtonAction::ExitPeak => Command::ExitPeak,
         }
     }
 }
@@ -425,9 +433,14 @@ mod tests {
     fn button_action_to_command() {
         assert_eq!(ButtonAction::Hold.to_command(), Command::Hold);
         assert_eq!(ButtonAction::MinMax.to_command(), Command::MinMax);
+        assert_eq!(ButtonAction::ExitMinMax.to_command(), Command::ExitMinMax);
         assert_eq!(ButtonAction::Rel.to_command(), Command::Rel);
         assert_eq!(ButtonAction::Range.to_command(), Command::Range);
+        assert_eq!(ButtonAction::Auto.to_command(), Command::Auto);
         assert_eq!(ButtonAction::Select.to_command(), Command::Select);
+        assert_eq!(ButtonAction::Select2.to_command(), Command::Select2);
         assert_eq!(ButtonAction::Light.to_command(), Command::Light);
+        assert_eq!(ButtonAction::PeakMinMax.to_command(), Command::PeakMinMax);
+        assert_eq!(ButtonAction::ExitPeak.to_command(), Command::ExitPeak);
     }
 }
