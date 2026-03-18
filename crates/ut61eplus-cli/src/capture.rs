@@ -357,8 +357,8 @@ pub fn list_steps() {
     }
     eprintln!();
     eprintln!("{}", style("  Other:").cyan());
-    eprintln!("    {:<16} {}", style("range_cycle").bold(), "Cycle through manual ranges on DC V");
-    eprintln!("    {:<16} {}", style("extra").bold(), "Freeform captures (Part 4)");
+    eprintln!("    {:<16} Cycle through manual ranges on DC V", style("range_cycle").bold());
+    eprintln!("    {:<16} Freeform captures (Part 4)", style("extra").bold());
     eprintln!();
     eprintln!("Usage: {} {}", style("ut61eplus capture --steps").dim(), style("dcmv,temp,duty").dim());
 }
@@ -467,7 +467,7 @@ pub fn cmd_capture(
     let all_steps = all_capture_steps();
     let is_filtered = step_filter.is_some();
     let include = |id: &str| -> bool {
-        step_filter.as_ref().map_or(true, |f| f.contains(id))
+        step_filter.as_ref().is_none_or(|f| f.contains(id))
     };
 
     let mut done = false;

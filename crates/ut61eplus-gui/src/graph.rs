@@ -358,17 +358,17 @@ impl Graph {
                     .add(egui::TextEdit::singleline(&mut self.y_max_text).desired_width(field_width))
                     .changed();
 
-                if changed_min {
-                    if let Ok(v) = self.y_min_text.parse::<f64>() {
-                        self.y_fixed_min = v;
-                        self.y_user_set = true;
-                    }
+                if changed_min
+                    && let Ok(v) = self.y_min_text.parse::<f64>()
+                {
+                    self.y_fixed_min = v;
+                    self.y_user_set = true;
                 }
-                if changed_max {
-                    if let Ok(v) = self.y_max_text.parse::<f64>() {
-                        self.y_fixed_max = v;
-                        self.y_user_set = true;
-                    }
+                if changed_max
+                    && let Ok(v) = self.y_max_text.parse::<f64>()
+                {
+                    self.y_fixed_max = v;
+                    self.y_user_set = true;
                 }
             }
 
@@ -384,12 +384,11 @@ impl Graph {
                 let changed = ui
                     .add(egui::TextEdit::singleline(&mut self.envelope_window_text).desired_width(30.0))
                     .changed();
-                if changed {
-                    if let Ok(v) = self.envelope_window_text.parse::<f64>() {
-                        if v > 0.0 {
-                            self.envelope_window_secs = v;
-                        }
-                    }
+                if changed
+                    && let Ok(v) = self.envelope_window_text.parse::<f64>()
+                    && v > 0.0
+                {
+                    self.envelope_window_secs = v;
                 }
                 ui.label(egui::RichText::new("s").small().color(ui.visuals().weak_text_color()));
             }
@@ -403,7 +402,7 @@ impl Graph {
                     .changed();
                 if changed {
                     self.ref_line_values = self.ref_line_text
-                        .split(|c: char| c == ',' || c == ';' || c == ' ')
+                        .split([',', ';', ' '])
                         .filter_map(|s| s.trim().parse::<f64>().ok())
                         .collect();
                 }
@@ -641,14 +640,14 @@ impl Graph {
                 }
 
                 // Mean line overlay
-                if show_mean {
-                    if let Some((_, _, avg, _)) = visible_stats {
-                        plot_ui.hline(
-                            HLine::new(avg)
-                                .color(mean_color)
-                                .style(egui_plot::LineStyle::dashed_loose()),
-                        );
-                    }
+                if show_mean
+                    && let Some((_, _, avg, _)) = visible_stats
+                {
+                    plot_ui.hline(
+                        HLine::new(avg)
+                            .color(mean_color)
+                            .style(egui_plot::LineStyle::dashed_loose()),
+                    );
                 }
 
                 // Reference line overlays
@@ -702,17 +701,17 @@ impl Graph {
         let label_font = egui::FontId::proportional(12.0);
 
         // Mean line label
-        if show_mean {
-            if let Some(avg) = mean_value {
-                let pos = response.transform.position_from_point(&egui_plot::PlotPoint::new(view_max, avg));
-                painter.text(
-                    egui::pos2(pos.x - 4.0, pos.y - 2.0),
-                    egui::Align2::RIGHT_BOTTOM,
-                    format!("Mean: {avg:.4} {overlay_unit}"),
-                    label_font.clone(),
-                    mean_color,
-                );
-            }
+        if show_mean
+            && let Some(avg) = mean_value
+        {
+            let pos = response.transform.position_from_point(&egui_plot::PlotPoint::new(view_max, avg));
+            painter.text(
+                egui::pos2(pos.x - 4.0, pos.y - 2.0),
+                egui::Align2::RIGHT_BOTTOM,
+                format!("Mean: {avg:.4} {overlay_unit}"),
+                label_font.clone(),
+                mean_color,
+            );
         }
 
         // Reference line labels
@@ -807,17 +806,17 @@ impl Graph {
         }
 
         // Cursor placement on click — snap to nearest data point
-        if self.cursors_active && response.response.clicked() {
-            if let Some(pos) = response.response.interact_pointer_pos() {
-                let click_t = response.transform.value_from_position(pos).x;
-                if let Some((snapped_t, _)) = self.nearest_point(click_t) {
-                    if self.cursor_next_is_b {
-                        self.cursor_b = Some(snapped_t);
-                    } else {
-                        self.cursor_a = Some(snapped_t);
-                    }
-                    self.cursor_next_is_b = !self.cursor_next_is_b;
+        if self.cursors_active && response.response.clicked()
+            && let Some(pos) = response.response.interact_pointer_pos()
+        {
+            let click_t = response.transform.value_from_position(pos).x;
+            if let Some((snapped_t, _)) = self.nearest_point(click_t) {
+                if self.cursor_next_is_b {
+                    self.cursor_b = Some(snapped_t);
+                } else {
+                    self.cursor_a = Some(snapped_t);
                 }
+                self.cursor_next_is_b = !self.cursor_next_is_b;
             }
         }
     }
@@ -1016,9 +1015,9 @@ impl Graph {
             // Scan [lo..] for points in [t - window, t]
             let mut vmin = f64::INFINITY;
             let mut vmax = f64::NEG_INFINITY;
-            for j in lo..=i {
-                vmin = vmin.min(points[j].1);
-                vmax = vmax.max(points[j].1);
+            for p in points.iter().take(i + 1).skip(lo) {
+                vmin = vmin.min(p.1);
+                vmax = vmax.max(p.1);
             }
 
             min_pts.push([t, vmin]);
