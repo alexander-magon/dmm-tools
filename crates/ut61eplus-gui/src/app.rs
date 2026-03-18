@@ -501,9 +501,14 @@ impl eframe::App for App {
                 }
             });
         } else {
-            // Narrow: single column
+            // Narrow: single column — stats under reading (they're related)
             egui::CentralPanel::default().show(ctx, |ui| {
                 display::show_reading_compact(ui, self.last_measurement.as_ref());
+
+                if self.settings.show_stats {
+                    ui.separator();
+                    self.show_stats_section(ui, true);
+                }
 
                 if self.settings.show_graph {
                     ui.separator();
@@ -511,11 +516,6 @@ impl eframe::App for App {
                     ui.allocate_ui(egui::vec2(ui.available_width(), graph_height), |ui| {
                         self.graph.show(ui, self.settings.graph_time_window.as_secs());
                     });
-                }
-
-                if self.settings.show_stats {
-                    ui.separator();
-                    self.show_stats_section(ui, true);
                 }
 
                 if self.settings.show_recording {
