@@ -1,5 +1,5 @@
 use eframe::egui::{self, Ui, Vec2b};
-use egui_plot::{AxisHints, HLine, Line, Plot, PlotBounds, PlotPoints, VLine};
+use egui_plot::{AxisHints, HLine, Line, Plot, PlotBounds, PlotPoints, Points, VLine};
 use std::collections::VecDeque;
 use std::time::Instant;
 
@@ -495,6 +495,11 @@ impl Graph {
         let show_mean = self.show_mean;
         let show_ref = self.show_ref_line;
         let ref_values = self.ref_line_values.clone();
+        let crossings = if show_ref && !ref_values.is_empty() {
+            self.find_crossings(&ref_values, view_min, view_max)
+        } else {
+            Vec::new()
+        };
         let cursors_active = self.cursors_active;
         let cursor_a = self.cursor_a;
         let cursor_b = self.cursor_b;
@@ -590,6 +595,17 @@ impl Graph {
                                 .style(egui_plot::LineStyle::dashed_dense()),
                         );
                     }
+                }
+
+                // Trigger crossing markers (where data crosses reference lines)
+                if !crossings.is_empty() {
+                    let cross_color = egui::Color32::from_rgb(255, 220, 100);
+                    plot_ui.points(
+                        Points::new(PlotPoints::new(crossings.clone()))
+                            .color(cross_color)
+                            .radius(4.0)
+                            .shape(egui_plot::MarkerShape::Diamond),
+                    );
                 }
 
                 // Measurement cursors (vertical + horizontal Y-value lines)
@@ -920,6 +936,30 @@ impl Graph {
             }
         }
         (min_pts, max_pts)
+    }
+
+    /// Find points where the data crosses any of the given threshold values.
+    /// Returns crossing points as [time, threshold_value].
+    fn find_crossings(&self, thresholds: &[f64], x_min: f64, x_max: f64) -> Vec<[f64; 2]> {
+        let mut crossings = Vec::new();
+        let mut prev: Option<(f64, f64)> = None;
+
+        for point in &self.history {
+            let t = self.elapsed_secs(point.time);
+            if t < x_min || t > x_max { continue; }
+
+            if let Some((_, prev_v)) = prev {
+                for &thresh in thresholds {
+                    let crossed = (prev_v <= thresh && point.value >= thresh)
+                        || (prev_v >= thresh && point.value <= thresh);
+                    if crossed {
+                        crossings.push([t, thresh]);
+                    }
+                }
+            }
+            prev = Some((t, point.value));
+        }
+        crossings
     }
 
     /// Find the Y value of the nearest data point to the given time.
