@@ -393,16 +393,18 @@ impl Graph {
             if self.cursors_active {
                 if let (Some(ta), Some(tb)) = (self.cursor_a, self.cursor_b) {
                     let dt = (tb - ta).abs();
-                    let va = self.value_at_time(ta);
-                    let vb = self.value_at_time(tb);
+                    let va = self.nearest_point(ta).map(|(_, v)| v);
+                    let vb = self.nearest_point(tb).map(|(_, v)| v);
                     let dv = match (va, vb) {
                         (Some(a), Some(b)) => format!("{:.4}", (b - a).abs()),
                         _ => "---".to_string(),
                     };
                     let unit = &self.current_unit;
+                    let dark = ui.visuals().dark_mode;
+                    let delta_color = if dark { egui::Color32::from_rgb(255, 180, 100) } else { egui::Color32::from_rgb(180, 80, 0) };
                     ui.label(
                         egui::RichText::new(format!("ΔT={dt:.2} s  ΔV={dv} {unit}"))
-                            .color(egui::Color32::from_rgb(255, 180, 100))
+                            .color(delta_color)
                             .strong(),
                     );
                 } else {
@@ -465,8 +467,17 @@ impl Graph {
         let gap_ranges = self.find_gap_ranges();
         let (view_min, view_max) = self.view_bounds();
 
-        let line_color = egui::Color32::from_rgb(180, 60, 60);
-        let gap_color = egui::Color32::from_rgba_premultiplied(180, 40, 40, 160);
+        let dark = ui.visuals().dark_mode;
+
+        // Theme-aware colors — darker on light theme for contrast
+        let line_color = if dark { egui::Color32::from_rgb(200, 100, 100) } else { egui::Color32::from_rgb(180, 40, 40) };
+        let gap_color = if dark { egui::Color32::from_rgba_premultiplied(180, 40, 40, 160) } else { egui::Color32::from_rgba_premultiplied(200, 0, 0, 120) };
+        let mean_color = if dark { egui::Color32::from_rgb(100, 200, 100) } else { egui::Color32::from_rgb(0, 140, 0) };
+        let ref_color = if dark { egui::Color32::from_rgb(200, 200, 100) } else { egui::Color32::from_rgb(160, 130, 0) };
+        let cross_color = if dark { egui::Color32::from_rgb(255, 220, 100) } else { egui::Color32::from_rgb(180, 130, 0) };
+        let cursor_color = if dark { egui::Color32::from_rgb(255, 180, 100) } else { egui::Color32::from_rgb(200, 100, 0) };
+        let cursor_color_dim = if dark { egui::Color32::from_rgba_premultiplied(255, 180, 100, 80) } else { egui::Color32::from_rgba_premultiplied(200, 100, 0, 60) };
+        let env_color = if dark { egui::Color32::from_rgba_premultiplied(100, 150, 200, 80) } else { egui::Color32::from_rgba_premultiplied(0, 80, 180, 100) };
 
         let can_interact = !self.live;
 
@@ -528,8 +539,8 @@ impl Graph {
         let cursors_active = self.cursors_active;
         let cursor_a = self.cursor_a;
         let cursor_b = self.cursor_b;
-        let cursor_va = cursor_a.and_then(|t| self.value_at_time(t));
-        let cursor_vb = cursor_b.and_then(|t| self.value_at_time(t));
+        let cursor_va = cursor_a.and_then(|t| self.nearest_point(t).map(|(_, v)| v));
+        let cursor_vb = cursor_b.and_then(|t| self.nearest_point(t).map(|(_, v)| v));
         let mean_value = self.visible_stats().map(|(_, _, avg, _)| avg);
         let overlay_unit = self.current_unit.clone();
         let visible_stats = self.visible_stats();
@@ -566,7 +577,7 @@ impl Graph {
 
                 // Min/max envelope (drawn first so it's behind the data line)
                 if show_envelope && !env_min.is_empty() {
-                    let env_color = egui::Color32::from_rgba_premultiplied(100, 150, 200, 80);
+                    // env_color defined above
                     plot_ui.line(
                         Line::new(PlotPoints::new(env_max.clone()))
                             .color(env_color)
@@ -601,7 +612,6 @@ impl Graph {
                 // Mean line overlay
                 if show_mean {
                     if let Some((_, _, avg, _)) = visible_stats {
-                        let mean_color = egui::Color32::from_rgba_premultiplied(100, 200, 100, 180);
                         plot_ui.hline(
                             HLine::new(avg)
                                 .color(mean_color)
@@ -612,7 +622,6 @@ impl Graph {
 
                 // Reference line overlays
                 if show_ref {
-                    let ref_color = egui::Color32::from_rgba_premultiplied(200, 200, 100, 180);
                     for &v in &ref_values {
                         plot_ui.hline(
                             HLine::new(v)
@@ -624,7 +633,7 @@ impl Graph {
 
                 // Trigger crossing markers (where data crosses reference lines)
                 if !crossings.is_empty() {
-                    let cross_color = egui::Color32::from_rgb(255, 220, 100);
+                    // cross_color defined above
                     plot_ui.points(
                         Points::new(PlotPoints::new(crossings.clone()))
                             .color(cross_color)
@@ -635,8 +644,7 @@ impl Graph {
 
                 // Measurement cursors (vertical + horizontal Y-value lines)
                 if cursors_active {
-                    let cursor_color = egui::Color32::from_rgb(255, 180, 100);
-                    let cursor_color_dim = egui::Color32::from_rgba_premultiplied(255, 180, 100, 80);
+                    // cursor_color, cursor_color_dim defined above
                     if let Some(t) = cursor_a {
                         plot_ui.vline(VLine::new(t).color(cursor_color));
                     }
@@ -666,7 +674,6 @@ impl Graph {
         if show_mean {
             if let Some(avg) = mean_value {
                 let pos = response.transform.position_from_point(&egui_plot::PlotPoint::new(view_max, avg));
-                let mean_color = egui::Color32::from_rgb(100, 200, 100);
                 painter.text(
                     egui::pos2(pos.x - 4.0, pos.y - 2.0),
                     egui::Align2::RIGHT_BOTTOM,
@@ -679,7 +686,6 @@ impl Graph {
 
         // Reference line labels
         if show_ref {
-            let ref_color = egui::Color32::from_rgb(200, 200, 100);
             for &v in &ref_values {
                 let pos = response.transform.position_from_point(&egui_plot::PlotPoint::new(view_max, v));
                 painter.text(
@@ -694,7 +700,6 @@ impl Graph {
 
         // Cursor labels
         if cursors_active {
-            let cursor_color = egui::Color32::from_rgb(255, 180, 100);
             if let Some(t) = cursor_a {
                 let y_val = cursor_va.unwrap_or(0.0);
                 let pos = response.transform.position_from_point(&egui_plot::PlotPoint::new(t, y_val));
@@ -770,16 +775,18 @@ impl Graph {
             self.live = true;
         }
 
-        // Cursor placement on click (when cursors active and not dragging)
+        // Cursor placement on click — snap to nearest data point
         if self.cursors_active && response.response.clicked() {
             if let Some(pos) = response.response.interact_pointer_pos() {
-                let t = response.transform.value_from_position(pos).x;
-                if self.cursor_next_is_b {
-                    self.cursor_b = Some(t);
-                } else {
-                    self.cursor_a = Some(t);
+                let click_t = response.transform.value_from_position(pos).x;
+                if let Some((snapped_t, _)) = self.nearest_point(click_t) {
+                    if self.cursor_next_is_b {
+                        self.cursor_b = Some(snapped_t);
+                    } else {
+                        self.cursor_a = Some(snapped_t);
+                    }
+                    self.cursor_next_is_b = !self.cursor_next_is_b;
                 }
-                self.cursor_next_is_b = !self.cursor_next_is_b;
             }
         }
     }
@@ -1009,16 +1016,18 @@ impl Graph {
     }
 
     /// Find the Y value of the nearest data point to the given time.
-    fn value_at_time(&self, t: f64) -> Option<f64> {
-        let mut best: Option<(f64, f64)> = None; // (distance, value)
+    /// Find the nearest data point to the given time.
+    /// Returns (snapped_time, value).
+    fn nearest_point(&self, t: f64) -> Option<(f64, f64)> {
+        let mut best: Option<(f64, f64, f64)> = None; // (distance, time, value)
         for point in &self.history {
             let pt = self.elapsed_secs(point.time);
             let dist = (pt - t).abs();
             if best.is_none() || dist < best.unwrap().0 {
-                best = Some((dist, point.value));
+                best = Some((dist, pt, point.value));
             }
         }
-        best.map(|(_, v)| v)
+        best.map(|(_, t, v)| (t, v))
     }
 
     pub fn len(&self) -> usize {
