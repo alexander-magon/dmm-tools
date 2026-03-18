@@ -471,8 +471,8 @@ impl Graph {
         let dark = ui.visuals().dark_mode;
 
         // Theme-aware colors — darker on light theme for contrast
-        let line_color = if dark { egui::Color32::from_rgb(200, 100, 100) } else { egui::Color32::from_rgb(180, 40, 40) };
-        let gap_color = if dark { egui::Color32::from_rgba_premultiplied(180, 40, 40, 160) } else { egui::Color32::from_rgba_premultiplied(200, 0, 0, 120) };
+        let line_color = if dark { egui::Color32::from_rgb(220, 120, 120) } else { egui::Color32::from_rgb(180, 40, 40) };
+        let gap_color = if dark { egui::Color32::from_rgb(220, 80, 80) } else { egui::Color32::from_rgba_premultiplied(200, 0, 0, 180) };
         let mean_color = if dark { egui::Color32::from_rgb(100, 200, 100) } else { egui::Color32::from_rgb(0, 120, 0) };
         let ref_color = if dark { egui::Color32::from_rgb(200, 200, 100) } else { egui::Color32::from_rgb(140, 100, 0) };
         let cross_color = if dark { egui::Color32::from_rgb(255, 220, 100) } else { egui::Color32::from_rgb(150, 100, 0) };
@@ -805,9 +805,9 @@ impl Graph {
 
         let dark = ui.visuals().dark_mode;
         let line_color = if dark {
-            egui::Color32::from_rgba_premultiplied(200, 100, 100, 180)
+            egui::Color32::from_rgba_premultiplied(220, 120, 120, 200)
         } else {
-            egui::Color32::from_rgba_premultiplied(180, 30, 30, 200)
+            egui::Color32::from_rgba_premultiplied(180, 30, 30, 220)
         };
 
         // Allocate rect for minimap + label space below, with margin for bracket strokes
