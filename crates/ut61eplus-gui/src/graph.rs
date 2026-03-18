@@ -90,10 +90,10 @@ pub struct Graph {
     y_user_set: bool,
     /// Show mean line overlay.
     pub show_mean: bool,
-    /// Reference line: show a horizontal line at this value.
+    /// Reference lines: show horizontal lines at these values.
     pub show_ref_line: bool,
     ref_line_text: String,
-    ref_line_value: f64,
+    ref_line_values: Vec<f64>,
     /// Measurement cursors: two vertical lines with ΔT/ΔV readout.
     pub cursors_active: bool,
     /// Cursor positions in seconds from origin. None = not yet placed.
@@ -122,8 +122,8 @@ impl Graph {
             y_user_set: false,
             show_mean: false,
             show_ref_line: false,
-            ref_line_text: "0".to_string(),
-            ref_line_value: 0.0,
+            ref_line_text: String::new(),
+            ref_line_values: Vec::new(),
             cursors_active: false,
             cursor_a: None,
             cursor_b: None,
@@ -342,12 +342,13 @@ impl Graph {
             }
             if self.show_ref_line {
                 let changed = ui
-                    .add(egui::TextEdit::singleline(&mut self.ref_line_text).desired_width(50.0))
+                    .add(egui::TextEdit::singleline(&mut self.ref_line_text).desired_width(80.0))
                     .changed();
                 if changed {
-                    if let Ok(v) = self.ref_line_text.parse::<f64>() {
-                        self.ref_line_value = v;
-                    }
+                    self.ref_line_values = self.ref_line_text
+                        .split(|c: char| c == ',' || c == ';' || c == ' ')
+                        .filter_map(|s| s.trim().parse::<f64>().ok())
+                        .collect();
                 }
             }
 
@@ -481,7 +482,7 @@ impl Graph {
 
         let show_mean = self.show_mean;
         let show_ref = self.show_ref_line;
-        let ref_value = self.ref_line_value;
+        let ref_values = self.ref_line_values.clone();
         let cursors_active = self.cursors_active;
         let cursor_a = self.cursor_a;
         let cursor_b = self.cursor_b;
@@ -552,14 +553,16 @@ impl Graph {
                     }
                 }
 
-                // Reference line overlay
+                // Reference line overlays
                 if show_ref {
                     let ref_color = egui::Color32::from_rgba_premultiplied(200, 200, 100, 180);
-                    plot_ui.hline(
-                        HLine::new(ref_value)
-                            .color(ref_color)
-                            .style(egui_plot::LineStyle::dashed_dense()),
-                    );
+                    for &v in &ref_values {
+                        plot_ui.hline(
+                            HLine::new(v)
+                                .color(ref_color)
+                                .style(egui_plot::LineStyle::dashed_dense()),
+                        );
+                    }
                 }
 
                 // Measurement cursors (vertical + horizontal Y-value lines)
@@ -606,17 +609,19 @@ impl Graph {
             }
         }
 
-        // Reference line label
+        // Reference line labels
         if show_ref {
-            let pos = response.transform.position_from_point(&egui_plot::PlotPoint::new(view_max, ref_value));
             let ref_color = egui::Color32::from_rgb(200, 200, 100);
-            painter.text(
-                egui::pos2(pos.x - 4.0, pos.y - 2.0),
-                egui::Align2::RIGHT_BOTTOM,
-                format!("Ref: {ref_value:.4} {overlay_unit}"),
-                label_font.clone(),
-                ref_color,
-            );
+            for &v in &ref_values {
+                let pos = response.transform.position_from_point(&egui_plot::PlotPoint::new(view_max, v));
+                painter.text(
+                    egui::pos2(pos.x - 4.0, pos.y - 2.0),
+                    egui::Align2::RIGHT_BOTTOM,
+                    format!("{v:.4} {overlay_unit}"),
+                    label_font.clone(),
+                    ref_color,
+                );
+            }
         }
 
         // Cursor labels
