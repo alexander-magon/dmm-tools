@@ -41,6 +41,7 @@ pub struct App {
 
     rx: Option<mpsc::Receiver<DmmMessage>>,
     stop_tx: Option<mpsc::Sender<()>>,
+    first_frame: bool,
 }
 
 impl App {
@@ -58,6 +59,7 @@ impl App {
             recording: Recording::new(),
             rx: None,
             stop_tx: None,
+            first_frame: true,
         }
     }
 
@@ -311,6 +313,13 @@ impl App {
         });
 
         ui.horizontal(|ui| {
+            let mut changed = false;
+            if ui
+                .checkbox(&mut self.settings.auto_connect, "Auto-connect on start")
+                .changed()
+            {
+                changed = true;
+            }
             if ui
                 .checkbox(
                     &mut self.settings.query_device_name,
@@ -318,6 +327,9 @@ impl App {
                 )
                 .changed()
             {
+                changed = true;
+            }
+            if changed {
                 self.settings.save();
             }
         });
@@ -427,6 +439,14 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.apply_theme(ctx);
         self.drain_messages();
+
+        // Auto-connect on first frame if enabled
+        if self.first_frame {
+            self.first_frame = false;
+            if self.settings.auto_connect {
+                self.connect(ctx);
+            }
+        }
 
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             self.show_top_bar(ui, ctx);

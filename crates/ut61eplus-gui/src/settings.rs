@@ -56,6 +56,8 @@ pub struct Settings {
     pub graph_time_window: GraphTimeWindow,
     /// Query device name on connect (causes a beep on the meter).
     pub query_device_name: bool,
+    /// Automatically connect to the meter when the GUI starts.
+    pub auto_connect: bool,
 }
 
 impl Default for Settings {
@@ -67,6 +69,7 @@ impl Default for Settings {
             show_recording: true,
             graph_time_window: GraphTimeWindow::Minutes1,
             query_device_name: true,
+            auto_connect: true,
         }
     }
 }
@@ -120,6 +123,7 @@ mod tests {
             show_recording: false,
             graph_time_window: GraphTimeWindow::Minutes5,
             query_device_name: false,
+            auto_connect: false,
         };
         let json = serde_json::to_string(&s).unwrap();
         let deserialized: Settings = serde_json::from_str(&json).unwrap();
