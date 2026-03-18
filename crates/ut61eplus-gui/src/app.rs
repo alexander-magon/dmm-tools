@@ -292,7 +292,7 @@ impl App {
                         continue;
                     }
                     if let MeasuredValue::Normal(v) = &m.value {
-                        self.graph.push(*v, &m.mode.to_string());
+                        self.graph.push(*v, &m.mode.to_string(), &m.unit);
                         self.stats.push(*v);
                     }
 

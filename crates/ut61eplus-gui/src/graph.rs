@@ -66,6 +66,7 @@ fn format_time_label(secs: f64) -> String {
 pub struct Graph {
     history: VecDeque<DataPoint>,
     current_mode: Option<String>,
+    current_unit: String,
     origin: Option<Instant>,
     /// Time window width in seconds for the main view.
     pub time_window_secs: f64,
@@ -94,6 +95,7 @@ impl Graph {
         Self {
             history: VecDeque::with_capacity(MAX_POINTS),
             current_mode: None,
+            current_unit: String::new(),
             origin: None,
             time_window_secs: 60.0,
             live: true,
@@ -114,7 +116,7 @@ impl Graph {
         self.gap_threshold_secs = (interval_secs * GAP_MULTIPLIER).max(GAP_MINIMUM_SECS);
     }
 
-    pub fn push(&mut self, value: f64, mode: &str) {
+    pub fn push(&mut self, value: f64, mode: &str, unit: &str) {
         let now = Instant::now();
 
         if self.origin.is_none() {
@@ -126,6 +128,7 @@ impl Graph {
             self.current_mode = Some(mode.to_string());
             self.origin = Some(now);
         }
+        self.current_unit = unit.to_string();
 
         if self.history.len() >= MAX_POINTS {
             self.history.pop_front();
@@ -371,7 +374,8 @@ impl Graph {
             .allow_scroll(Vec2b::new(false, false))
             .allow_double_click_reset(false)
             .reset()
-            .x_axis_label("time (s)");
+            .x_axis_label("time (s)")
+            .y_axis_label(&self.current_unit);
 
         let response = plot.show(ui, |plot_ui| {
                 // Set exact bounds: our X view range + computed Y range
@@ -634,7 +638,7 @@ mod tests {
     #[test]
     fn push_adds_point() {
         let mut g = Graph::new();
-        g.push(5.0, "DC V");
+        g.push(5.0, "DC V", "V");
         assert_eq!(g.len(), 1);
         assert!(!g.is_empty());
         assert!(g.origin.is_some());
@@ -643,10 +647,10 @@ mod tests {
     #[test]
     fn mode_change_clears_history() {
         let mut g = Graph::new();
-        g.push(5.0, "DC V");
-        g.push(5.1, "DC V");
+        g.push(5.0, "DC V", "V");
+        g.push(5.1, "DC V", "V");
         assert_eq!(g.len(), 2);
-        g.push(100.0, "Ohm");
+        g.push(100.0, "Ohm", "Ω");
         assert_eq!(g.len(), 1);
     }
 
@@ -654,7 +658,7 @@ mod tests {
     fn max_points_evicts_oldest() {
         let mut g = Graph::new();
         for i in 0..MAX_POINTS + 100 {
-            g.push(i as f64, "DC V");
+            g.push(i as f64, "DC V", "V");
         }
         assert_eq!(g.len(), MAX_POINTS);
     }
@@ -662,7 +666,7 @@ mod tests {
     #[test]
     fn clear_resets_everything() {
         let mut g = Graph::new();
-        g.push(5.0, "DC V");
+        g.push(5.0, "DC V", "V");
         g.live = false;
         g.clear();
         assert!(g.is_empty());
@@ -674,9 +678,9 @@ mod tests {
     #[test]
     fn segments_without_gaps() {
         let mut g = Graph::new();
-        g.push(1.0, "DC V");
-        g.push(2.0, "DC V");
-        g.push(3.0, "DC V");
+        g.push(1.0, "DC V", "V");
+        g.push(2.0, "DC V", "V");
+        g.push(3.0, "DC V", "V");
         let segments = g.build_raw_segments();
         assert_eq!(segments.len(), 1);
     }
@@ -684,8 +688,8 @@ mod tests {
     #[test]
     fn gap_detection() {
         let mut g = Graph::new();
-        g.push(1.0, "DC V");
-        g.push(2.0, "DC V");
+        g.push(1.0, "DC V", "V");
+        g.push(2.0, "DC V", "V");
         let gaps = g.find_gap_ranges();
         assert!(gaps.is_empty());
     }
@@ -693,9 +697,9 @@ mod tests {
     #[test]
     fn elapsed_secs_relative_to_origin() {
         let mut g = Graph::new();
-        g.push(1.0, "DC V");
+        g.push(1.0, "DC V", "V");
         sleep(Duration::from_millis(50));
-        g.push(2.0, "DC V");
+        g.push(2.0, "DC V", "V");
         let t = g.elapsed_secs(g.history.back().unwrap().time);
         assert!(t >= 0.04);
     }
@@ -704,7 +708,7 @@ mod tests {
     fn live_view_bounds_follow_latest() {
         let mut g = Graph::new();
         g.time_window_secs = 10.0;
-        g.push(1.0, "DC V");
+        g.push(1.0, "DC V", "V");
         let (vmin, vmax) = g.view_bounds();
         assert!(vmin >= 0.0);
         assert!(vmax >= vmin);
