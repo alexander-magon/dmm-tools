@@ -13,7 +13,7 @@ use crate::stats::Stats;
 /// Messages from the background thread to the UI.
 pub enum DmmMessage {
     Measurement(Measurement),
-    Connected,
+    Connected(String), // device name
     Disconnected(String),
     Error(String),
 }
@@ -31,6 +31,7 @@ pub struct App {
     settings_open: bool,
 
     connection_state: ConnectionState,
+    device_name: Option<String>,
     last_measurement: Option<Measurement>,
     start_time: Instant,
 
@@ -49,6 +50,7 @@ impl App {
             settings,
             settings_open: false,
             connection_state: ConnectionState::Disconnected,
+            device_name: None,
             last_measurement: None,
             start_time: Instant::now(),
             graph: Graph::new(),
@@ -81,8 +83,9 @@ impl App {
         std::thread::spawn(move || {
             info!("background thread: connecting to device");
             let mut dmm = match ut61eplus_lib::open() {
-                Ok(d) => {
-                    let _ = msg_tx.send(DmmMessage::Connected);
+                Ok(mut d) => {
+                    let name = d.get_name().unwrap_or_default();
+                    let _ = msg_tx.send(DmmMessage::Connected(name));
                     ctx_clone.request_repaint();
                     d
                 }
@@ -120,9 +123,10 @@ impl App {
                             }
                             std::thread::sleep(std::time::Duration::from_secs(2));
                             match ut61eplus_lib::open() {
-                                Ok(d) => {
+                                Ok(mut d) => {
+                                    let name = d.get_name().unwrap_or_default();
                                     dmm = d;
-                                    let _ = msg_tx.send(DmmMessage::Connected);
+                                    let _ = msg_tx.send(DmmMessage::Connected(name));
                                     ctx_clone.request_repaint();
                                     break;
                                 }
@@ -144,6 +148,7 @@ impl App {
         }
         self.rx = None;
         self.connection_state = ConnectionState::Disconnected;
+        self.device_name = None;
     }
 
     fn drain_messages(&mut self) {
@@ -157,9 +162,10 @@ impl App {
 
         for msg in messages {
             match msg {
-                DmmMessage::Connected => {
+                DmmMessage::Connected(name) => {
                     self.connection_state = ConnectionState::Connected;
-                    info!("UI: connected");
+                    self.device_name = if name.is_empty() { None } else { Some(name.clone()) };
+                    info!("UI: connected to {name}");
                 }
                 DmmMessage::Measurement(m) => {
                     let elapsed = self.start_time.elapsed().as_secs_f64();
@@ -213,9 +219,16 @@ impl App {
             }
 
             let (dot_color, status_text) = match &self.connection_state {
-                ConnectionState::Connected => (Color32::from_rgb(60, 180, 75), "Connected"),
-                ConnectionState::Disconnected => (Color32::from_rgb(150, 150, 150), "Disconnected"),
-                ConnectionState::Reconnecting => (Color32::from_rgb(230, 160, 40), "Reconnecting..."),
+                ConnectionState::Connected => {
+                    let name = self.device_name.as_deref().unwrap_or("Connected");
+                    (Color32::from_rgb(60, 180, 75), name.to_string())
+                }
+                ConnectionState::Disconnected => {
+                    (Color32::from_rgb(150, 150, 150), "Disconnected".to_string())
+                }
+                ConnectionState::Reconnecting => {
+                    (Color32::from_rgb(230, 160, 40), "Reconnecting...".to_string())
+                }
             };
 
             let (rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
