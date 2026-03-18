@@ -73,7 +73,7 @@ Rust workspace for communicating with the UNI-T UT61E+ multimeter via USB (CP211
 ### Dependencies
 - Keep dependencies minimal and well-maintained
 - Library crate: only `hidapi`, `thiserror`, `log`
-- CLI crate: adds `clap`, `csv`, `serde`, `serde_json`, `chrono`, `env_logger`, `ctrlc`, `console`, `serde_yaml`
+- CLI crate: adds `clap`, `serde`, `serde_json`, `chrono`, `env_logger`, `ctrlc`, `console`, `serde_yaml`
 - Avoid pulling in large frameworks for small tasks
 
 ## Protocol reference

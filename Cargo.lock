@@ -3716,7 +3716,6 @@ dependencies = [
  "chrono",
  "clap",
  "console",
- "csv",
  "ctrlc",
  "env_logger",
  "log",
