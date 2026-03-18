@@ -90,6 +90,8 @@ pub struct Graph {
     y_user_set: bool,
     /// Show mean line overlay.
     pub show_mean: bool,
+    /// Show min/max envelope band.
+    pub show_envelope: bool,
     /// Reference lines: show horizontal lines at these values.
     pub show_ref_line: bool,
     ref_line_text: String,
@@ -121,6 +123,7 @@ impl Graph {
             y_fixed_max: 1.0,
             y_user_set: false,
             show_mean: false,
+            show_envelope: false,
             show_ref_line: false,
             ref_line_text: String::new(),
             ref_line_values: Vec::new(),
@@ -336,6 +339,9 @@ impl Graph {
             if ui.selectable_label(self.show_mean, "Mean").clicked() {
                 self.show_mean = !self.show_mean;
             }
+            if ui.selectable_label(self.show_envelope, "Min/Max").clicked() {
+                self.show_envelope = !self.show_envelope;
+            }
 
             if ui.selectable_label(self.show_ref_line, "Ref").clicked() {
                 self.show_ref_line = !self.show_ref_line;
@@ -480,6 +486,12 @@ impl Graph {
                 }
             });
 
+        let show_envelope = self.show_envelope;
+        let (env_min, env_max) = if show_envelope {
+            self.build_envelope(view_min, view_max, 100)
+        } else {
+            (Vec::new(), Vec::new())
+        };
         let show_mean = self.show_mean;
         let show_ref = self.show_ref_line;
         let ref_values = self.ref_line_values.clone();
@@ -521,6 +533,21 @@ impl Graph {
                     [view_min, y_min],
                     [view_max, y_max],
                 ));
+
+                // Min/max envelope (drawn first so it's behind the data line)
+                if show_envelope && !env_min.is_empty() {
+                    let env_color = egui::Color32::from_rgba_premultiplied(100, 150, 200, 80);
+                    plot_ui.line(
+                        Line::new(PlotPoints::new(env_max.clone()))
+                            .color(env_color)
+                            .style(egui_plot::LineStyle::dashed_dense()),
+                    );
+                    plot_ui.line(
+                        Line::new(PlotPoints::new(env_min.clone()))
+                            .color(env_color)
+                            .style(egui_plot::LineStyle::dashed_dense()),
+                    );
+                }
 
                 for seg in &raw_segments {
                     plot_ui.line(
@@ -864,6 +891,35 @@ impl Graph {
         } else {
             None
         }
+    }
+
+    /// Build min/max envelope lines for the visible window.
+    /// Returns (min_points, max_points) as Vec<[f64; 2]>.
+    fn build_envelope(&self, x_min: f64, x_max: f64, num_buckets: usize) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
+        let span = (x_max - x_min).max(1e-6);
+        let bucket_width = span / num_buckets as f64;
+        let mut mins = vec![f64::INFINITY; num_buckets];
+        let mut maxs = vec![f64::NEG_INFINITY; num_buckets];
+
+        for point in &self.history {
+            let t = self.elapsed_secs(point.time);
+            if t < x_min || t > x_max { continue; }
+            let idx = ((t - x_min) / bucket_width) as usize;
+            let idx = idx.min(num_buckets - 1);
+            mins[idx] = mins[idx].min(point.value);
+            maxs[idx] = maxs[idx].max(point.value);
+        }
+
+        let mut min_pts = Vec::new();
+        let mut max_pts = Vec::new();
+        for i in 0..num_buckets {
+            if mins[i].is_finite() {
+                let t = x_min + (i as f64 + 0.5) * bucket_width;
+                min_pts.push([t, mins[i]]);
+                max_pts.push([t, maxs[i]]);
+            }
+        }
+        (min_pts, max_pts)
     }
 
     /// Find the Y value of the nearest data point to the given time.
