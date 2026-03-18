@@ -71,7 +71,7 @@ impl App {
         }
     }
 
-    const ZOOM_LEVELS: &[u32] = &[75, 100, 125, 150, 175, 200];
+    const ZOOM_LEVELS: &[u32] = &[30, 50, 67, 80, 90, 100, 110, 120, 133, 150, 170, 200, 240, 300];
 
     fn apply_zoom(&mut self, ctx: &egui::Context) {
         // Capture OS default pixels_per_point on first call
