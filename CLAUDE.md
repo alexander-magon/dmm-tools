@@ -33,6 +33,7 @@ Rust workspace for communicating with the UNI-T UT61E+ multimeter via USB (CP211
 - Our protocol understanding comes from reverse engineering (USB traces, decompiled vendor apps, community work) — not official documentation. Verify assumptions against real device behavior whenever possible. When adding new protocol features or encountering unexpected responses, capture raw hex dumps and use them to refine our understanding before coding around assumptions.
 
 ### Commit discipline
+- **Every commit must include tests for new code** — write tests before or alongside the code, never defer them
 - Commit logical units of work — one concept per commit
 - Each commit should compile and pass tests (`cargo build && cargo test`)
 - Write concise commit messages: imperative mood, explain the "why" not just the "what"
