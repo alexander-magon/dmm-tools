@@ -7,7 +7,9 @@ fn main() {
         Ok(devices) => {
             if devices.is_empty() {
                 eprintln!("No UT61E+ devices found.");
-                eprintln!("Check USB connection and udev rules (see udev/99-cp2110-unit.rules).");
+                eprintln!("Check USB connection.");
+                #[cfg(target_os = "linux")]
+                eprintln!("Ensure udev rules are installed (see udev/99-cp2110-unit.rules).");
                 std::process::exit(1);
             }
             for (i, dev) in devices.iter().enumerate() {

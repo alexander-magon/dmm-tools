@@ -3,8 +3,11 @@
 ## Prerequisites
 
 - Rust toolchain (stable, 2024 edition)
-- `libudev-dev` (Linux, for hidapi)
 - UNI-T UT61E+ multimeter connected via USB
+
+**Linux:** `libudev-dev` (Debian/Ubuntu) or `systemd-devel` (Fedora) for hidapi.
+
+**Windows:** Install the [CP2110 HID USB-to-UART bridge driver](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers) from Silicon Labs.
 
 ## Build
 
@@ -12,7 +15,9 @@
 cargo build --workspace
 ```
 
-## udev Rule (Linux)
+## Platform setup
+
+### Linux — udev rule
 
 To allow non-root access to the HID device:
 
@@ -24,13 +29,25 @@ sudo udevadm trigger
 
 Then re-plug the meter or log out/in.
 
+Your user must be in the `plugdev` group:
+
+```sh
+sudo usermod -aG plugdev $USER
+```
+
+Log out and back in for the group change to take effect.
+
+### Windows — driver
+
+Install the CP2110 driver from [Silicon Labs](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers). After installation, verify the device appears in Device Manager under "Human Interface Devices" or "USB Devices".
+
 ## Troubleshooting
 
 ### "USB adapter not found"
 
-- Verify the CP2110 USB adapter is plugged in: `lsusb | grep 10C4:EA80`
-- Ensure the udev rule is installed (see above)
-- After installing the rule, re-plug the adapter or run `sudo udevadm trigger`
+- Verify the CP2110 USB adapter is plugged in
+- **Linux:** `lsusb | grep 10C4:EA80` — if missing, check the udev rule (see above)
+- **Windows:** check Device Manager for the CP2110 device — if missing or showing an error, reinstall the driver
 
 ### "No response from meter"
 
@@ -41,17 +58,7 @@ The USB adapter is detected but the meter isn't transmitting data:
 3. Long press the **USB/Hz** button until the **S** icon appears on the LCD
 4. The S icon confirms USB data transmission is active
 
-### Permission denied on /dev/hidrawX
-
-The udev rule grants access to the `plugdev` group. Ensure your user is in that group:
-
-```sh
-sudo usermod -aG plugdev $USER
-```
-
-Log out and back in for the group change to take effect.
-
-### GUI won't start (Wayland/X11)
+### GUI won't start (Linux, Wayland/X11)
 
 The GUI uses eframe/egui which supports both Wayland and X11. If you encounter display issues, try forcing X11:
 

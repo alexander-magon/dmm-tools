@@ -61,7 +61,8 @@ All three models use the same CP2110 USB adapter and communication protocol. If 
 ### Prerequisites
 
 - Rust toolchain (stable, 2024 edition)
-- `libudev-dev` (Debian/Ubuntu) or equivalent
+- **Linux:** `libudev-dev` (Debian/Ubuntu) or `systemd-devel` (Fedora)
+- **Windows:** [CP2110 driver](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers) from Silicon Labs
 - UNI-T UT61E+ with USB adapter plugged in
 
 ### Build

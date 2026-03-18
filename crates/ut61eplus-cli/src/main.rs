@@ -12,7 +12,7 @@ use ut61eplus_lib::command::Command;
 use ut61eplus_lib::measurement::MeasuredValue;
 
 #[derive(Parser)]
-#[command(name = "ut61eplus", about = "UNI-T UT61E+ multimeter tool", after_help = "Set NO_COLOR=1 to disable colored output.")]
+#[command(name = "ut61eplus", about = "UNI-T UT61E+ multimeter tool", after_help = "Set NO_COLOR=1 to disable colored output.\nhttps://github.com/antoinecellerier/dmm-tools")]
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
@@ -147,9 +147,17 @@ fn open_with_help() -> Result<ut61eplus_lib::Dmm<ut61eplus_lib::cp2110::Cp2110>,
         Err(ut61eplus_lib::error::Error::DeviceNotFound { .. }) => {
             eprintln!("{}", style("USB adapter not found.").yellow().bold());
             eprintln!("Check that the CP2110 USB adapter is plugged in.");
-            eprintln!("On Linux, ensure the udev rule is installed:");
-            eprintln!("  {}", style("sudo cp udev/99-cp2110-unit.rules /etc/udev/rules.d/").dim());
-            eprintln!("  {}", style("sudo udevadm control --reload-rules").dim());
+            #[cfg(target_os = "linux")]
+            {
+                eprintln!("On Linux, ensure the udev rule is installed:");
+                eprintln!("  {}", style("sudo cp udev/99-cp2110-unit.rules /etc/udev/rules.d/").dim());
+                eprintln!("  {}", style("sudo udevadm control --reload-rules").dim());
+            }
+            #[cfg(target_os = "windows")]
+            {
+                eprintln!("On Windows, ensure the CP2110 driver is installed.");
+                eprintln!("Download from: {}", style("https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers").dim());
+            }
             Err("device not found".into())
         }
         Err(e) => Err(e.into()),
