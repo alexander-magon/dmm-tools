@@ -90,6 +90,10 @@ pub struct Graph {
     y_user_set: bool,
     /// Show mean line overlay.
     pub show_mean: bool,
+    /// Reference line: show a horizontal line at this value.
+    pub show_ref_line: bool,
+    ref_line_text: String,
+    ref_line_value: f64,
 }
 
 impl Graph {
@@ -110,6 +114,9 @@ impl Graph {
             y_fixed_max: 1.0,
             y_user_set: false,
             show_mean: false,
+            show_ref_line: false,
+            ref_line_text: "0".to_string(),
+            ref_line_value: 0.0,
         }
     }
 
@@ -318,6 +325,20 @@ impl Graph {
             if ui.selectable_label(self.show_mean, "Mean").clicked() {
                 self.show_mean = !self.show_mean;
             }
+
+            if ui.selectable_label(self.show_ref_line, "Ref").clicked() {
+                self.show_ref_line = !self.show_ref_line;
+            }
+            if self.show_ref_line {
+                let changed = ui
+                    .add(egui::TextEdit::singleline(&mut self.ref_line_text).desired_width(50.0))
+                    .changed();
+                if changed {
+                    if let Ok(v) = self.ref_line_text.parse::<f64>() {
+                        self.ref_line_value = v;
+                    }
+                }
+            }
         });
     }
 
@@ -416,6 +437,8 @@ impl Graph {
             });
 
         let show_mean = self.show_mean;
+        let show_ref = self.show_ref_line;
+        let ref_value = self.ref_line_value;
         let visible_stats = self.visible_stats();
 
         let cursor_unit = self.current_unit.clone();
@@ -477,6 +500,16 @@ impl Graph {
                                 .style(egui_plot::LineStyle::dashed_loose()),
                         );
                     }
+                }
+
+                // Reference line overlay
+                if show_ref {
+                    let ref_color = egui::Color32::from_rgba_premultiplied(200, 200, 100, 180);
+                    plot_ui.hline(
+                        HLine::new(ref_value)
+                            .color(ref_color)
+                            .style(egui_plot::LineStyle::dashed_dense()),
+                    );
                 }
             });
 
