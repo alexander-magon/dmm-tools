@@ -1,5 +1,5 @@
 use eframe::egui::{self, Ui};
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{Line, Plot, PlotPoints, VLine};
 use std::collections::VecDeque;
 use std::time::Instant;
 
@@ -88,7 +88,7 @@ impl Graph {
         let gap_ranges = self.find_gap_ranges();
 
         let line_color = egui::Color32::from_rgb(200, 100, 100);
-        let gap_color = egui::Color32::from_rgba_premultiplied(80, 40, 40, 60);
+        let gap_color = egui::Color32::from_rgba_premultiplied(150, 60, 60, 120);
 
         Plot::new("measurement_plot")
             .height(ui.available_height().max(80.0))
@@ -99,28 +99,21 @@ impl Graph {
             .allow_scroll(false)
             .x_axis_label("time (s)")
             .show(ui, |plot_ui| {
-                // Draw gap shading as filled rectangles (two vertical lines + polygon)
-                for &(gap_start, gap_end) in &gap_ranges {
-                    let bounds = plot_ui.plot_bounds();
-                    let y_min = bounds.min()[1];
-                    let y_max = bounds.max()[1];
-                    // Shaded rectangle as a filled polygon
-                    let rect_points = PlotPoints::new(vec![
-                        [gap_start, y_min],
-                        [gap_start, y_max],
-                        [gap_end, y_max],
-                        [gap_end, y_min],
-                    ]);
-                    plot_ui.polygon(
-                        egui_plot::Polygon::new(rect_points)
-                            .fill_color(gap_color)
-                            .stroke(egui::Stroke::NONE),
-                    );
-                }
-
-                // Draw all line segments with consistent color
                 for segment in segments {
                     plot_ui.line(Line::new(segment).color(line_color));
+                }
+
+                for &(gap_start, gap_end) in &gap_ranges {
+                    plot_ui.vline(
+                        VLine::new(gap_start)
+                            .color(gap_color)
+                            .style(egui_plot::LineStyle::dashed_dense()),
+                    );
+                    plot_ui.vline(
+                        VLine::new(gap_end)
+                            .color(gap_color)
+                            .style(egui_plot::LineStyle::dashed_dense()),
+                    );
                 }
             });
     }
