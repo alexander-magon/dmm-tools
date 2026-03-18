@@ -108,6 +108,11 @@ pub struct Graph {
     cursor_b: Option<f64>,
     /// Which cursor to place next on click.
     cursor_next_is_b: bool,
+    /// Cached segment data, rebuilt only when history changes.
+    cached_segments: Vec<Vec<[f64; 2]>>,
+    cached_gaps: Vec<(f64, f64)>,
+    /// Number of history entries when cache was built.
+    cache_len: usize,
 }
 
 impl Graph {
@@ -139,6 +144,9 @@ impl Graph {
             cursor_a: None,
             cursor_b: None,
             cursor_next_is_b: false,
+            cached_segments: Vec::new(),
+            cached_gaps: Vec::new(),
+            cache_len: 0,
         }
     }
 
@@ -161,6 +169,7 @@ impl Graph {
             self.origin = Some(now);
             self.live = true;
             self.view_center = 0.0;
+            self.invalidate_cache();
         }
         self.current_unit = unit.to_string();
 
@@ -180,6 +189,22 @@ impl Graph {
         self.view_center = 0.0;
         self.y_axis_fixed = false;
         self.y_user_set = false;
+        self.invalidate_cache();
+    }
+
+    fn invalidate_cache(&mut self) {
+        self.cache_len = 0;
+        self.cached_segments.clear();
+        self.cached_gaps.clear();
+    }
+
+    /// Rebuild cached segments/gaps only if history has changed.
+    fn ensure_cache(&mut self) {
+        if self.cache_len != self.history.len() {
+            self.cached_segments = self.build_raw_segments();
+            self.cached_gaps = self.find_gap_ranges();
+            self.cache_len = self.history.len();
+        }
     }
 
     fn elapsed_secs(&self, t: Instant) -> f64 {
@@ -468,8 +493,9 @@ impl Graph {
 
     /// Render the main graph.
     pub fn show_main(&mut self, ui: &mut Ui) {
-        let raw_segments = self.build_raw_segments();
-        let gap_ranges = self.find_gap_ranges();
+        self.ensure_cache();
+        let raw_segments = &self.cached_segments;
+        let gap_ranges = &self.cached_gaps;
         let (view_min, view_max) = self.view_bounds();
 
         let dark = ui.visuals().dark_mode;
@@ -595,13 +621,13 @@ impl Graph {
                     );
                 }
 
-                for seg in &raw_segments {
+                for seg in raw_segments {
                     plot_ui.line(
                         Line::new(PlotPoints::new(seg.clone())).color(line_color),
                     );
                 }
 
-                for &(gap_start, gap_end) in &gap_ranges {
+                for &(gap_start, gap_end) in gap_ranges {
                     plot_ui.vline(
                         VLine::new(gap_start)
                             .color(gap_color)
@@ -803,7 +829,8 @@ impl Graph {
             return;
         }
 
-        let raw_segments = self.build_raw_segments();
+        self.ensure_cache();
+        let raw_segments = &self.cached_segments;
         let (data_min, data_max) = self.data_time_range();
         let (view_min, view_max) = self.view_bounds();
 
@@ -840,7 +867,7 @@ impl Graph {
         painter.rect_filled(rect, 0.0, ui.visuals().extreme_bg_color);
 
         // Draw data lines
-        for seg in &raw_segments {
+        for seg in raw_segments {
             let points: Vec<egui::Pos2> = seg
                 .iter()
                 .map(|&[t, v]| {
