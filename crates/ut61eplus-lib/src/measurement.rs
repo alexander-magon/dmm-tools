@@ -33,6 +33,8 @@ pub struct Measurement {
     /// Bar graph progress value (0-100).
     pub progress: u16,
     pub flags: StatusFlags,
+    /// Raw 14-byte payload as received (for protocol debugging).
+    pub raw_payload: Vec<u8>,
 }
 
 impl Measurement {
@@ -109,6 +111,7 @@ impl Measurement {
             range_label,
             progress,
             flags,
+            raw_payload: payload[..MEASUREMENT_PAYLOAD_LEN].to_vec(),
         })
     }
 }
