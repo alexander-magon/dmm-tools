@@ -33,8 +33,19 @@ cargo fmt --check
 
 ## Release Process
 
-1. Update version in root `Cargo.toml` (workspace inherits it)
-2. Run full check: `cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings`
-3. Tag the release: `git tag -a v0.x.y -m "Release v0.x.y"`
-4. Build release binaries: `cargo build --workspace --release`
-5. Binaries are in `target/release/ut61eplus` (CLI) and `target/release/ut61eplus-gui` (GUI)
+1. Set the release version in root `Cargo.toml` (workspace inherits it), e.g. `version = "0.2.0"`
+2. Commit: `git commit -am "Release v0.2.0"`
+3. Tag: `git tag v0.2.0 && git push && git push origin v0.2.0`
+4. The `release.yml` GitHub Actions workflow builds Linux and Windows binaries and creates a GitHub Release automatically
+5. Bump to the next dev version: set `version = "0.3.0-dev"` in `Cargo.toml`, commit, and push
+
+## Shell Completions
+
+Generate completions for your shell:
+
+```sh
+ut61eplus completions bash > ~/.local/share/bash-completion/completions/ut61eplus
+ut61eplus completions zsh > ~/.zfunc/_ut61eplus
+ut61eplus completions fish > ~/.config/fish/completions/ut61eplus.fish
+ut61eplus completions powershell >> $PROFILE
+```

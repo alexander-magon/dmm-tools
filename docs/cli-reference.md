@@ -21,6 +21,13 @@ and guided data capture for verification.
 
 Set `NO_COLOR=1` to disable colored output.
 
+## Global Options
+
+| Option | Description |
+|---|---|
+| `-h, --help` | Print help |
+| `-V, --version` | Print version |
+
 ## Commands
 
 ### ut61eplus list

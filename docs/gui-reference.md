@@ -25,6 +25,7 @@ and remote control of the UNI-T UT61E+ multimeter. Built with egui/eframe.
 
 The top bar contains:
 
+- **App name and version**
 - **Connect / Disconnect** button
 - **Pause / Resume** button — freezes data capture without disconnecting.
   Pauses longer than the gap threshold produce gap markers on the graph.
