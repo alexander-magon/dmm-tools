@@ -58,14 +58,17 @@ All three models use the same CP2110 USB adapter and communication protocol. If 
 
 ## Quick start
 
+Pre-built binaries for Linux and Windows are available on the [Releases](https://github.com/antoinecellerier/dmm-tools/releases) page.
+
 ### Prerequisites
 
-- Rust toolchain (stable, 2024 edition)
-- **Linux:** `libudev-dev` (Debian/Ubuntu) or `systemd-devel` (Fedora)
+- **Linux:** `libudev-dev` (Debian/Ubuntu) or `systemd-devel` (Fedora) — only needed when building from source
 - **Windows:** [CP2110 driver](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers) from Silicon Labs
 - UNI-T UT61E+ with USB adapter plugged in
 
-### Build
+### Build from source
+
+Requires the Rust toolchain (stable, 2024 edition).
 
 ```sh
 cargo build --workspace
