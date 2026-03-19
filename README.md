@@ -111,6 +111,7 @@ docs/              — architecture, protocol, setup, UX design docs
 ## Documentation
 
 - [CLI reference](docs/cli-reference.md)
+- [GUI reference](docs/gui-reference.md)
 - [Setup & troubleshooting](docs/setup.md)
 - [Architecture](docs/architecture.md)
 - [Protocol details](docs/protocol.md)
