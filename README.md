@@ -45,7 +45,7 @@ Sent hold
 Connect to other device families with `--device`:
 
 ```
-$ ut61eplus --device ut8803 debug --count 3
+$ ut61eplus --device ut8803 capture
 WARNING: UNI-T UT8803 support is EXPERIMENTAL (unverified against real hardware).
 ```
 
@@ -66,7 +66,7 @@ WARNING: UNI-T UT8803 support is EXPERIMENTAL (unverified against real hardware)
 | UT171 | UT171A/B/C | Streaming, float32 values | Experimental |
 | UT181A | UT181A | Streaming, float32 + unit strings | Experimental |
 
-**Experimental** means the protocol was reverse-engineered from vendor software but has not been tested against real hardware. If you have one of these meters, please run `ut61eplus --device <family> debug` and [report your findings](https://github.com/antoinecellerier/dmm-tools/issues).
+**Experimental** means the protocol was reverse-engineered from vendor software but has not been tested against real hardware. If you have one of these meters, please run `ut61eplus --device <family> capture` and [share the report](https://github.com/antoinecellerier/dmm-tools/issues).
 
 See [docs/supported-devices.md](docs/supported-devices.md) for the full compatibility list and reference implementations.
 

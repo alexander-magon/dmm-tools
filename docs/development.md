@@ -58,10 +58,13 @@ hex-encoded payload and the expected parsed fields (mode, value, unit, range, fl
 
 To add a golden test:
 
-1. Capture a raw payload from a real device (via `ut61eplus debug` with `RUST_LOG=trace`)
+1. Get a raw payload from a real device. Options:
+   - Run `ut61eplus --device <family> capture` — the YAML report contains `raw_hex` for each sample
+   - Run `RUST_LOG=ut61eplus_lib=trace ut61eplus --device <family> debug` — raw hex appears in log output
 2. Create a `.json` file in the appropriate `tests/golden/<family>/` directory
-3. Fill in `payload_hex` and the expected parsed fields
-4. Run `cargo test --workspace` to verify
+3. Set `payload_hex` to the raw payload bytes (spaces allowed, e.g. `"02 31 20 35 2E..."`)
+4. Fill in the expected parsed fields (mode, value, unit, range_label, flags)
+5. Run `cargo test --workspace` to verify
 
 Golden tests run as part of the standard test suite. They are the primary
 regression safety net for protocol parsing — add them whenever you verify

@@ -208,10 +208,11 @@ fn open_with_help(
                 );
                 eprintln!(
                     "{}",
-                    style(
-                        "Please report findings at https://github.com/antoinecellerier/dmm-tools"
-                    )
-                    .yellow()
+                    style("Run 'capture' to generate a report for validation:").yellow()
+                );
+                eprintln!(
+                    "{}",
+                    style(format!("  ut61eplus --device {} capture", family)).yellow()
                 );
             }
             Ok(dmm)
