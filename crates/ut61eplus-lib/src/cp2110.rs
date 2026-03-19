@@ -119,6 +119,9 @@ impl Cp2110 {
             )));
         }
         // TX/RX FIFO counts are 16-bit little-endian (AN434 §3.2 default byte order)
+        // Note: SLABHIDtoUART.dll decompilation suggests big-endian (CONCAT11 pattern),
+        // but we cannot verify — the CP2110 drains the FIFO to HID in real time, so
+        // counts are always 0 in normal operation.
         let tx_fifo = u16::from_le_bytes([buf[1], buf[2]]);
         let rx_fifo = u16::from_le_bytes([buf[3], buf[4]]);
         // Error Status: bit 0 = parity error, bit 1 = overrun error
