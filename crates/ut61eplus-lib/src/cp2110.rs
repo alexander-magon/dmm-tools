@@ -151,6 +151,75 @@ impl Cp2110 {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vid_pid_constants() {
+        assert_eq!(VID, 0x10C4, "Silicon Labs VID");
+        assert_eq!(PID, 0xEA80, "CP2110 PID for UT61E+");
+    }
+
+    #[test]
+    fn max_report_payload_matches_an434() {
+        // AN434 §6.1: max interrupt report payload is 63 bytes
+        assert_eq!(MAX_REPORT_PAYLOAD, 63);
+    }
+
+    #[test]
+    fn uart_status_struct() {
+        let status = UartStatus {
+            tx_fifo: 100,
+            rx_fifo: 200,
+            parity_error: true,
+            overrun_error: false,
+            line_break: true,
+        };
+        assert_eq!(status.tx_fifo, 100);
+        assert_eq!(status.rx_fifo, 200);
+        assert!(status.parity_error);
+        assert!(!status.overrun_error);
+        assert!(status.line_break);
+    }
+
+    #[test]
+    fn version_info_struct() {
+        let info = VersionInfo {
+            part_number: 0x0A,
+            device_version: 5,
+        };
+        assert_eq!(info.part_number, 0x0A);
+        assert_eq!(info.device_version, 5);
+    }
+
+    #[test]
+    fn uart_status_debug_format() {
+        // Ensure Debug derive works for diagnostic output
+        let status = UartStatus {
+            tx_fifo: 0,
+            rx_fifo: 0,
+            parity_error: false,
+            overrun_error: false,
+            line_break: false,
+        };
+        let debug = format!("{status:?}");
+        assert!(debug.contains("UartStatus"));
+        assert!(debug.contains("tx_fifo"));
+    }
+
+    #[test]
+    fn version_info_clone() {
+        let info = VersionInfo {
+            part_number: 0x0A,
+            device_version: 3,
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.part_number, info.part_number);
+        assert_eq!(cloned.device_version, info.device_version);
+    }
+}
+
 impl Transport for Cp2110 {
     fn write(&self, data: &[u8]) -> Result<()> {
         // CP2110 interrupt OUT: first byte is length, then payload (AN434 §6.1).

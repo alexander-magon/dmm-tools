@@ -20,7 +20,7 @@ pub struct CaptureReport {
     pub steps: Vec<StepResult>,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum StepStatus {
     Captured,
@@ -544,6 +544,314 @@ pub fn run_capture_step(
 
     upsert_step(report, result);
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    /// Helper: build a Measurement for testing (no real device needed).
+    fn make_measurement(
+        mode: u8,
+        range: u8,
+        display: &[u8; 7],
+        progress: (u8, u8),
+        flags: (u8, u8, u8),
+    ) -> Measurement {
+        let payload: Vec<u8> = vec![
+            mode,
+            range | 0x30,
+            display[0],
+            display[1],
+            display[2],
+            display[3],
+            display[4],
+            display[5],
+            display[6],
+            progress.0,
+            progress.1,
+            flags.0 | 0x30,
+            flags.1 | 0x30,
+            flags.2 | 0x30,
+        ];
+        let table = ut61eplus_lib::tables::ut61e_plus::Ut61ePlusTable::new();
+        Measurement::parse(&payload, &table).unwrap()
+    }
+
+    #[test]
+    fn sample_data_from_normal_measurement() {
+        let m = make_measurement(0x02, 0x01, b"  5.678", (0x05, 0x0A), (0x00, 0x00, 0x00));
+        let s = SampleData::from_measurement(&m);
+        assert_eq!(s.mode_byte, "0x02");
+        assert_eq!(s.mode, "DC V");
+        assert_eq!(s.range_byte, "0x01");
+        assert_eq!(s.unit, "V");
+        assert_eq!(s.range_label, "22V");
+        assert_eq!(s.value, "5.678");
+        assert!(s.flags.auto_range);
+        assert!(!s.flags.hold);
+    }
+
+    #[test]
+    fn sample_data_from_overload() {
+        let m = make_measurement(0x06, 0x00, b"    OL ", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let s = SampleData::from_measurement(&m);
+        assert_eq!(s.value, "OL");
+        assert_eq!(s.mode, "Ω");
+    }
+
+    #[test]
+    fn sample_data_from_ncv() {
+        let m = make_measurement(0x14, 0x00, b"      3", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let s = SampleData::from_measurement(&m);
+        assert_eq!(s.value, "NCV:3");
+        assert_eq!(s.mode, "NCV");
+    }
+
+    #[test]
+    fn sample_data_raw_hex() {
+        let m = make_measurement(0x02, 0x00, b" 0.0000", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let s = SampleData::from_measurement(&m);
+        // raw_hex should have 14 hex bytes separated by spaces
+        let parts: Vec<&str> = s.raw_hex.split(' ').collect();
+        assert_eq!(parts.len(), 14);
+    }
+
+    #[test]
+    fn sample_data_flags_mapping() {
+        // flag1=0x0F (REL+HOLD+MIN+MAX), flag2=0x04 (manual range), flag3=0x08 (DC)
+        let m = make_measurement(0x02, 0x00, b"  1.234", (0x00, 0x00), (0x0F, 0x04, 0x08));
+        let s = SampleData::from_measurement(&m);
+        assert!(s.flags.hold);
+        assert!(s.flags.rel);
+        assert!(s.flags.min);
+        assert!(s.flags.max);
+        assert!(!s.flags.auto_range);
+        assert!(s.flags.dc);
+    }
+
+    #[test]
+    fn summary_format() {
+        let m = make_measurement(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x02, 0x00, 0x00));
+        let s = SampleData::from_measurement(&m);
+        let summary = s.summary();
+        assert!(summary.contains("5.678"));
+        assert!(summary.contains("V"));
+        assert!(summary.contains("AUTO"));
+        assert!(summary.contains("HOLD"));
+    }
+
+    #[test]
+    fn summary_auto_only() {
+        let m = make_measurement(0x02, 0x01, b"  1.000", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let s = SampleData::from_measurement(&m);
+        let summary = s.summary();
+        assert!(summary.contains("[AUTO]"));
+    }
+
+    #[test]
+    fn upsert_step_insert() {
+        let mut report = CaptureReport::default();
+        let result = StepResult {
+            id: "dcv".to_string(),
+            instruction: "test".to_string(),
+            status: StepStatus::Captured,
+            samples: vec![],
+            screen: None,
+            error: None,
+        };
+        upsert_step(&mut report, result);
+        assert_eq!(report.steps.len(), 1);
+        assert_eq!(report.steps[0].id, "dcv");
+    }
+
+    #[test]
+    fn upsert_step_replace() {
+        let mut report = CaptureReport::default();
+        let result1 = StepResult {
+            id: "dcv".to_string(),
+            instruction: "first".to_string(),
+            status: StepStatus::Skipped,
+            samples: vec![],
+            screen: None,
+            error: None,
+        };
+        upsert_step(&mut report, result1);
+
+        let result2 = StepResult {
+            id: "dcv".to_string(),
+            instruction: "replaced".to_string(),
+            status: StepStatus::Captured,
+            samples: vec![],
+            screen: None,
+            error: None,
+        };
+        upsert_step(&mut report, result2);
+
+        assert_eq!(report.steps.len(), 1);
+        assert_eq!(report.steps[0].instruction, "replaced");
+        assert_eq!(report.steps[0].status, StepStatus::Captured);
+    }
+
+    #[test]
+    fn upsert_step_multiple_ids() {
+        let mut report = CaptureReport::default();
+        for id in ["dcv", "acv", "ohm"] {
+            upsert_step(
+                &mut report,
+                StepResult {
+                    id: id.to_string(),
+                    instruction: id.to_string(),
+                    status: StepStatus::Captured,
+                    samples: vec![],
+                    screen: None,
+                    error: None,
+                },
+            );
+        }
+        assert_eq!(report.steps.len(), 3);
+    }
+
+    #[test]
+    fn all_capture_steps_has_expected_count() {
+        let steps = all_capture_steps();
+        // 17 mode steps + 8 flag steps + 1 range_cycle = 26
+        assert_eq!(steps.len(), 26);
+    }
+
+    #[test]
+    fn all_capture_steps_unique_ids() {
+        let steps = all_capture_steps();
+        let mut ids: Vec<&str> = steps.iter().map(|s| s.id).collect();
+        let len_before = ids.len();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), len_before, "step IDs must be unique");
+    }
+
+    #[test]
+    fn mode_and_flag_step_ids_cover_all_steps() {
+        let steps = all_capture_steps();
+        for step in &steps {
+            let in_modes = MODE_STEP_IDS.contains(&step.id);
+            let in_flags = FLAG_STEP_IDS.contains(&step.id);
+            let is_range_cycle = step.id == "range_cycle";
+            assert!(
+                in_modes || in_flags || is_range_cycle,
+                "step {} not in any category",
+                step.id
+            );
+        }
+    }
+
+    #[test]
+    fn capture_report_serde_roundtrip() {
+        let m = make_measurement(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let sample = SampleData::from_measurement(&m);
+
+        let report = CaptureReport {
+            date: "2026-01-01T00:00:00+00:00".to_string(),
+            tool_version: "0.2.0-dev (abc1234)".to_string(),
+            device_name: "UT61E+".to_string(),
+            cp2110_part: Some("0x0a".to_string()),
+            cp2110_firmware: Some(10),
+            supported: true,
+            steps: vec![StepResult {
+                id: "dcv".to_string(),
+                instruction: "Set meter to DC V".to_string(),
+                status: StepStatus::Captured,
+                samples: vec![sample],
+                screen: Some("confirmed: 5.678 V [AUTO]".to_string()),
+                error: None,
+            }],
+        };
+
+        let yaml = serde_yaml::to_string(&report).unwrap();
+        let parsed: CaptureReport = serde_yaml::from_str(&yaml).unwrap();
+
+        assert_eq!(parsed.date, report.date);
+        assert_eq!(parsed.device_name, report.device_name);
+        assert!(parsed.supported);
+        assert_eq!(parsed.steps.len(), 1);
+        assert_eq!(parsed.steps[0].samples.len(), 1);
+        assert_eq!(parsed.steps[0].samples[0].value, "5.678");
+        assert_eq!(parsed.steps[0].screen, report.steps[0].screen);
+    }
+
+    #[test]
+    fn capture_report_optional_fields_skip() {
+        let report = CaptureReport {
+            date: "2026-01-01".to_string(),
+            tool_version: "0.2.0".to_string(),
+            device_name: "UT61E+".to_string(),
+            cp2110_part: None,
+            cp2110_firmware: None,
+            supported: true,
+            steps: vec![StepResult {
+                id: "dcv".to_string(),
+                instruction: "test".to_string(),
+                status: StepStatus::Skipped,
+                samples: vec![],
+                screen: None,
+                error: None,
+            }],
+        };
+
+        let yaml = serde_yaml::to_string(&report).unwrap();
+        // Optional None fields should not appear in output
+        assert!(!yaml.contains("cp2110_part"));
+        assert!(!yaml.contains("cp2110_firmware"));
+        // Empty samples should not appear
+        assert!(!yaml.contains("samples"));
+
+        // Parse back
+        let parsed: CaptureReport = serde_yaml::from_str(&yaml).unwrap();
+        assert!(parsed.cp2110_part.is_none());
+        assert!(parsed.cp2110_firmware.is_none());
+        assert!(parsed.steps[0].samples.is_empty());
+    }
+
+    #[test]
+    fn step_status_serde() {
+        let yaml = serde_yaml::to_string(&StepStatus::Captured).unwrap();
+        assert!(yaml.contains("captured"));
+
+        let yaml = serde_yaml::to_string(&StepStatus::Skipped).unwrap();
+        assert!(yaml.contains("skipped"));
+
+        let yaml = serde_yaml::to_string(&StepStatus::Timeout).unwrap();
+        assert!(yaml.contains("timeout"));
+
+        let yaml = serde_yaml::to_string(&StepStatus::Error).unwrap();
+        assert!(yaml.contains("error"));
+    }
+
+    #[test]
+    fn save_and_load_report_file() {
+        let report = CaptureReport {
+            date: "2026-01-01".to_string(),
+            tool_version: "test".to_string(),
+            device_name: "UT61E+".to_string(),
+            cp2110_part: None,
+            cp2110_firmware: None,
+            supported: true,
+            steps: vec![],
+        };
+
+        let dir = std::env::temp_dir();
+        let path = dir
+            .join("ut61eplus-test-capture.yaml")
+            .to_string_lossy()
+            .to_string();
+
+        save_report(&report, &path).unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let parsed: CaptureReport = serde_yaml::from_str(&contents).unwrap();
+        assert_eq!(parsed.device_name, "UT61E+");
+
+        // Cleanup
+        let _ = std::fs::remove_file(&path);
+    }
 }
 
 // --- Main capture command ---

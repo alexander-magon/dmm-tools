@@ -147,6 +147,58 @@ pub fn show_reading_compact(ui: &mut Ui, measurement: Option<&Measurement>) {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_display_raw_normal() {
+        assert_eq!(format_display_raw("  5.678"), "  5.678");
+    }
+
+    #[test]
+    fn format_display_raw_negative_with_space() {
+        // "- 55.79" should be right-aligned to 7 chars
+        assert_eq!(format_display_raw("- 55.79"), "- 55.79");
+    }
+
+    #[test]
+    fn format_display_raw_short_value() {
+        // Short values get padded to 7 chars
+        assert_eq!(format_display_raw("OL"), "     OL");
+    }
+
+    #[test]
+    fn format_display_raw_trailing_spaces_trimmed() {
+        // Trailing spaces trimmed before alignment
+        // "1.23  " → trim_end → "1.23" (4 chars) → right-align to 7
+        assert_eq!(format_display_raw("1.23  "), "   1.23");
+    }
+
+    #[test]
+    fn format_display_raw_full_width() {
+        assert_eq!(format_display_raw("-12.345"), "-12.345");
+    }
+
+    #[test]
+    fn format_display_raw_empty() {
+        assert_eq!(format_display_raw(""), "       ");
+    }
+
+    #[test]
+    fn format_display_raw_consistent_width() {
+        // All outputs should be at least 7 chars wide
+        let inputs = [" 0.0000", "  5.678", "-12.345", "    OL ", "- 55.79"];
+        for input in &inputs {
+            let output = format_display_raw(input);
+            assert!(
+                output.len() >= 7,
+                "format_display_raw({input:?}) = {output:?} should be >= 7 chars"
+            );
+        }
+    }
+}
+
 fn show_flags(ui: &mut Ui, m: &Measurement) {
     let badge = |ui: &mut Ui, label: &str, color: Color32| {
         let text = RichText::new(label).small().strong().color(color);

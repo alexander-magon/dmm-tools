@@ -411,3 +411,269 @@ impl DeviceTable for Ut61ePlusTable {
         "UNI-T UT61E+"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn table() -> Ut61ePlusTable {
+        Ut61ePlusTable::new()
+    }
+
+    // --- DC Voltage ---
+    #[test]
+    fn dcv_ranges() {
+        let t = table();
+        let r0 = t.range_info(Mode::DcV, 0).unwrap();
+        assert_eq!(r0.label, "2.2V");
+        assert_eq!(r0.unit, "V");
+        assert_eq!(r0.overload_pos, 2.2);
+        assert_eq!(r0.overload_neg, -2.2);
+
+        let r1 = t.range_info(Mode::DcV, 1).unwrap();
+        assert_eq!(r1.label, "22V");
+
+        let r2 = t.range_info(Mode::DcV, 2).unwrap();
+        assert_eq!(r2.label, "220V");
+
+        let r3 = t.range_info(Mode::DcV, 3).unwrap();
+        assert_eq!(r3.label, "1000V");
+
+        let r4 = t.range_info(Mode::DcV, 4).unwrap();
+        assert_eq!(r4.label, "220mV");
+        assert_eq!(r4.unit, "mV");
+
+        assert!(t.range_info(Mode::DcV, 5).is_none());
+    }
+
+    // --- AC Voltage ---
+    #[test]
+    fn acv_ranges() {
+        let t = table();
+        assert_eq!(t.range_info(Mode::AcV, 0).unwrap().label, "2.2V");
+        assert_eq!(t.range_info(Mode::AcV, 3).unwrap().label, "750V");
+        assert_eq!(t.range_info(Mode::AcV, 3).unwrap().overload_pos, 750.0);
+        assert_eq!(t.range_info(Mode::AcV, 4).unwrap().label, "220mV");
+        assert!(t.range_info(Mode::AcV, 5).is_none());
+    }
+
+    // --- DC/AC millivolts ---
+    #[test]
+    fn millivolt_ranges() {
+        let t = table();
+        for mode in [Mode::DcMv, Mode::AcMv] {
+            let r0 = t.range_info(mode, 0).unwrap();
+            assert_eq!(r0.label, "220mV");
+            assert_eq!(r0.unit, "mV");
+
+            let r1 = t.range_info(mode, 1).unwrap();
+            assert_eq!(r1.label, "2.2V");
+            assert_eq!(r1.overload_pos, 2200.0);
+
+            assert!(t.range_info(mode, 2).is_none());
+        }
+    }
+
+    // --- Resistance ---
+    #[test]
+    fn ohm_ranges() {
+        let t = table();
+        let cases = [
+            (0, "220Ω", "Ω", 220.0),
+            (1, "2.2kΩ", "kΩ", 2.2),
+            (2, "22kΩ", "kΩ", 22.0),
+            (3, "220kΩ", "kΩ", 220.0),
+            (4, "2.2MΩ", "MΩ", 2.2),
+            (5, "22MΩ", "MΩ", 22.0),
+            (6, "220MΩ", "MΩ", 220.0),
+        ];
+        for (range, label, unit, overload) in cases {
+            let r = t.range_info(Mode::Ohm, range).unwrap();
+            assert_eq!(r.label, label, "Ohm range {range}");
+            assert_eq!(r.unit, unit, "Ohm range {range}");
+            assert_eq!(r.overload_pos, overload, "Ohm range {range}");
+            assert!(
+                r.overload_neg.is_infinite(),
+                "Ohm overload_neg should be -inf"
+            );
+        }
+        assert!(t.range_info(Mode::Ohm, 7).is_none());
+    }
+
+    // --- Capacitance ---
+    #[test]
+    fn capacitance_ranges() {
+        let t = table();
+        let cases = [
+            (0, "22nF", "nF"),
+            (1, "220nF", "nF"),
+            (2, "2.2µF", "µF"),
+            (3, "22µF", "µF"),
+            (4, "220µF", "µF"),
+            (5, "2.2mF", "mF"),
+            (6, "22mF", "mF"),
+            (7, "220mF", "mF"),
+        ];
+        for (range, label, unit) in cases {
+            let r = t.range_info(Mode::Capacitance, range).unwrap();
+            assert_eq!(r.label, label, "Capacitance range {range}");
+            assert_eq!(r.unit, unit, "Capacitance range {range}");
+        }
+        assert!(t.range_info(Mode::Capacitance, 8).is_none());
+    }
+
+    // --- Hz ---
+    #[test]
+    fn hz_ranges() {
+        let t = table();
+        assert_eq!(t.range_info(Mode::Hz, 0).unwrap().label, "22Hz");
+        assert_eq!(t.range_info(Mode::Hz, 0).unwrap().unit, "Hz");
+        assert_eq!(t.range_info(Mode::Hz, 2).unwrap().label, "2.2kHz");
+        assert_eq!(t.range_info(Mode::Hz, 2).unwrap().unit, "kHz");
+        assert_eq!(t.range_info(Mode::Hz, 4).unwrap().label, "220kHz");
+        assert!(t.range_info(Mode::Hz, 5).is_none());
+    }
+
+    // --- Single-range modes ---
+    #[test]
+    fn duty_cycle_range() {
+        let t = table();
+        let r = t.range_info(Mode::DutyCycle, 0).unwrap();
+        assert_eq!(r.unit, "%");
+        assert_eq!(r.overload_pos, 100.0);
+        assert!(t.range_info(Mode::DutyCycle, 1).is_none());
+    }
+
+    #[test]
+    fn temp_ranges() {
+        let t = table();
+        let tc = t.range_info(Mode::TempC, 0).unwrap();
+        assert_eq!(tc.unit, "°C");
+        assert_eq!(tc.overload_pos, 1200.0);
+        assert_eq!(tc.overload_neg, -40.0);
+
+        let tf = t.range_info(Mode::TempF, 0).unwrap();
+        assert_eq!(tf.unit, "°F");
+        assert_eq!(tf.overload_pos, 2192.0);
+    }
+
+    #[test]
+    fn diode_range() {
+        let t = table();
+        let r = t.range_info(Mode::Diode, 0).unwrap();
+        assert_eq!(r.unit, "V");
+        assert_eq!(r.overload_pos, 2.2);
+    }
+
+    #[test]
+    fn continuity_range() {
+        let t = table();
+        let r = t.range_info(Mode::Continuity, 0).unwrap();
+        assert_eq!(r.unit, "Ω");
+        assert_eq!(r.overload_pos, 220.0);
+    }
+
+    // --- Current ranges ---
+    #[test]
+    fn microamp_ranges() {
+        let t = table();
+        for mode in [Mode::DcUa, Mode::AcUa] {
+            assert_eq!(t.range_info(mode, 0).unwrap().label, "220µA");
+            assert_eq!(t.range_info(mode, 0).unwrap().unit, "µA");
+            assert_eq!(t.range_info(mode, 1).unwrap().label, "2200µA");
+            assert!(t.range_info(mode, 2).is_none());
+        }
+    }
+
+    #[test]
+    fn milliamp_ranges() {
+        let t = table();
+        for mode in [Mode::DcMa, Mode::AcMa] {
+            assert_eq!(t.range_info(mode, 0).unwrap().label, "22mA");
+            assert_eq!(t.range_info(mode, 0).unwrap().unit, "mA");
+            assert_eq!(t.range_info(mode, 1).unwrap().label, "220mA");
+            assert!(t.range_info(mode, 2).is_none());
+        }
+    }
+
+    #[test]
+    fn amp_ranges() {
+        let t = table();
+        for mode in [Mode::DcA, Mode::AcA] {
+            assert_eq!(t.range_info(mode, 0).unwrap().label, "20A");
+            assert_eq!(t.range_info(mode, 0).unwrap().unit, "A");
+            assert_eq!(t.range_info(mode, 1).unwrap().label, "20A");
+            assert!(t.range_info(mode, 2).is_none());
+        }
+    }
+
+    // --- Derived modes delegate to base tables ---
+    #[test]
+    fn derived_voltage_modes_use_dcv_table() {
+        let t = table();
+        for mode in [Mode::AcDcV, Mode::LpfV, Mode::LozV] {
+            let r = t.range_info(mode, 0).unwrap();
+            assert_eq!(r.label, "2.2V", "{mode:?} should use DCV table");
+            assert_eq!(r.unit, "V");
+            let r3 = t.range_info(mode, 3).unwrap();
+            assert_eq!(r3.label, "1000V", "{mode:?} range 3 should be 1000V");
+        }
+    }
+
+    #[test]
+    fn derived_millivolt_modes_use_dcmv_table() {
+        let t = table();
+        for mode in [Mode::AcDcMv, Mode::LpfMv] {
+            let r = t.range_info(mode, 0).unwrap();
+            assert_eq!(r.label, "220mV", "{mode:?} should use DCmV table");
+        }
+    }
+
+    #[test]
+    fn derived_amp_modes_use_dca_table() {
+        let t = table();
+        for mode in [Mode::AcDcA, Mode::AcDcDcA, Mode::AcDcA2, Mode::LpfA] {
+            let r = t.range_info(mode, 0).unwrap();
+            assert_eq!(r.label, "20A", "{mode:?} should use DCA table");
+            assert_eq!(r.unit, "A");
+        }
+    }
+
+    // --- Modes without range tables ---
+    #[test]
+    fn no_range_table_modes() {
+        let t = table();
+        for mode in [Mode::Ncv, Mode::Hfe, Mode::Live, Mode::Inrush] {
+            assert!(
+                t.range_info(mode, 0).is_none(),
+                "{mode:?} should have no range table"
+            );
+        }
+    }
+
+    #[test]
+    fn out_of_range_bytes_return_none() {
+        let t = table();
+        // Every mode should return None for a sufficiently large range byte
+        assert!(t.range_info(Mode::DcV, 0xFF).is_none());
+        assert!(t.range_info(Mode::Ohm, 0x10).is_none());
+        assert!(t.range_info(Mode::Capacitance, 0x20).is_none());
+    }
+
+    #[test]
+    fn model_name() {
+        let t = table();
+        assert_eq!(t.model_name(), "UNI-T UT61E+");
+    }
+
+    #[test]
+    fn default_matches_new() {
+        let t1 = Ut61ePlusTable::new();
+        let t2 = Ut61ePlusTable::default();
+        // Both should return the same range info
+        assert_eq!(
+            t1.range_info(Mode::DcV, 0).unwrap().label,
+            t2.range_info(Mode::DcV, 0).unwrap().label,
+        );
+    }
+}

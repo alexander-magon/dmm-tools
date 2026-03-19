@@ -639,6 +639,47 @@ mod tests {
     }
 
     #[test]
+    fn format_csv_ncv() {
+        let m = make_measurement(0x14, 0x00, b"      3", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let mut buf = Vec::new();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Csv).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        assert!(output.contains("NCV:3"));
+    }
+
+    #[test]
+    fn format_json_ncv() {
+        let m = make_measurement(0x14, 0x00, b"      3", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let mut buf = Vec::new();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Json).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(parsed["value"]["ncv_level"], 3);
+        assert_eq!(parsed["mode"], "NCV");
+    }
+
+    #[test]
+    fn format_text_includes_flags() {
+        // flag1=0x0F (all), flag2=0x00 (AUTO on)
+        let m = make_measurement(0x02, 0x00, b"  1.234", (0x00, 0x00), (0x0F, 0x00, 0x00));
+        let mut buf = Vec::new();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Text).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        assert!(output.contains("HOLD"));
+        assert!(output.contains("REL"));
+    }
+
+    #[test]
+    fn format_json_negative_value() {
+        let m = make_measurement(0x02, 0x01, b"-12.345", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let mut buf = Vec::new();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Json).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert!((parsed["value"].as_f64().unwrap() - (-12.345)).abs() < 1e-6);
+    }
+
+    #[test]
     fn button_action_to_command() {
         assert_eq!(ButtonAction::Hold.to_command(), Command::Hold);
         assert_eq!(ButtonAction::MinMax.to_command(), Command::MinMax);

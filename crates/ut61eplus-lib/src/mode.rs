@@ -120,3 +120,187 @@ impl fmt::Display for Mode {
         write!(f, "{s}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::Error;
+
+    #[test]
+    fn from_byte_all_valid_modes() {
+        let expected = [
+            (0x00, Mode::AcV),
+            (0x01, Mode::AcMv),
+            (0x02, Mode::DcV),
+            (0x03, Mode::DcMv),
+            (0x04, Mode::Hz),
+            (0x05, Mode::DutyCycle),
+            (0x06, Mode::Ohm),
+            (0x07, Mode::Continuity),
+            (0x08, Mode::Diode),
+            (0x09, Mode::Capacitance),
+            (0x0A, Mode::TempC),
+            (0x0B, Mode::TempF),
+            (0x0C, Mode::DcUa),
+            (0x0D, Mode::AcUa),
+            (0x0E, Mode::DcMa),
+            (0x0F, Mode::AcMa),
+            (0x10, Mode::DcA),
+            (0x11, Mode::AcA),
+            (0x12, Mode::Hfe),
+            (0x13, Mode::Live),
+            (0x14, Mode::Ncv),
+            (0x15, Mode::LozV),
+            (0x16, Mode::AcDcA),
+            (0x17, Mode::AcDcDcA),
+            (0x18, Mode::LpfV),
+            (0x19, Mode::AcDcV),
+            (0x1A, Mode::LpfMv),
+            (0x1B, Mode::AcDcMv),
+            (0x1C, Mode::LpfA),
+            (0x1D, Mode::AcDcA2),
+            (0x1E, Mode::Inrush),
+        ];
+        for (byte, mode) in &expected {
+            assert_eq!(
+                Mode::from_byte(*byte).unwrap(),
+                *mode,
+                "byte {byte:#04x} should map to {mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_byte_roundtrip_via_repr() {
+        // Verify that from_byte(variant as u8) == variant for all variants
+        let all_modes = [
+            Mode::AcV,
+            Mode::AcMv,
+            Mode::DcV,
+            Mode::DcMv,
+            Mode::Hz,
+            Mode::DutyCycle,
+            Mode::Ohm,
+            Mode::Continuity,
+            Mode::Diode,
+            Mode::Capacitance,
+            Mode::TempC,
+            Mode::TempF,
+            Mode::DcUa,
+            Mode::AcUa,
+            Mode::DcMa,
+            Mode::AcMa,
+            Mode::DcA,
+            Mode::AcA,
+            Mode::Hfe,
+            Mode::Live,
+            Mode::Ncv,
+            Mode::LozV,
+            Mode::AcDcA,
+            Mode::AcDcDcA,
+            Mode::LpfV,
+            Mode::AcDcV,
+            Mode::LpfMv,
+            Mode::AcDcMv,
+            Mode::LpfA,
+            Mode::AcDcA2,
+            Mode::Inrush,
+        ];
+        for mode in &all_modes {
+            let byte = *mode as u8;
+            assert_eq!(Mode::from_byte(byte).unwrap(), *mode);
+        }
+    }
+
+    #[test]
+    fn from_byte_invalid() {
+        assert!(matches!(
+            Mode::from_byte(0x1F),
+            Err(Error::UnknownMode(0x1F))
+        ));
+        assert!(matches!(
+            Mode::from_byte(0xFF),
+            Err(Error::UnknownMode(0xFF))
+        ));
+        assert!(matches!(
+            Mode::from_byte(0x20),
+            Err(Error::UnknownMode(0x20))
+        ));
+    }
+
+    #[test]
+    fn display_all_modes() {
+        // Verify Display doesn't panic and produces non-empty strings
+        let all_modes = [
+            Mode::AcV,
+            Mode::AcMv,
+            Mode::DcV,
+            Mode::DcMv,
+            Mode::Hz,
+            Mode::DutyCycle,
+            Mode::Ohm,
+            Mode::Continuity,
+            Mode::Diode,
+            Mode::Capacitance,
+            Mode::TempC,
+            Mode::TempF,
+            Mode::DcUa,
+            Mode::AcUa,
+            Mode::DcMa,
+            Mode::AcMa,
+            Mode::DcA,
+            Mode::AcA,
+            Mode::Hfe,
+            Mode::Live,
+            Mode::Ncv,
+            Mode::LozV,
+            Mode::AcDcA,
+            Mode::AcDcDcA,
+            Mode::LpfV,
+            Mode::AcDcV,
+            Mode::LpfMv,
+            Mode::AcDcMv,
+            Mode::LpfA,
+            Mode::AcDcA2,
+            Mode::Inrush,
+        ];
+        for mode in &all_modes {
+            let s = mode.to_string();
+            assert!(!s.is_empty(), "{mode:?} should have non-empty display");
+        }
+    }
+
+    #[test]
+    fn display_specific_labels() {
+        assert_eq!(Mode::AcV.to_string(), "AC V");
+        assert_eq!(Mode::DcV.to_string(), "DC V");
+        assert_eq!(Mode::Ohm.to_string(), "Ω");
+        assert_eq!(Mode::Capacitance.to_string(), "Capacitance");
+        assert_eq!(Mode::TempC.to_string(), "°C");
+        assert_eq!(Mode::TempF.to_string(), "°F");
+        assert_eq!(Mode::DcUa.to_string(), "DC µA");
+        assert_eq!(Mode::Hfe.to_string(), "hFE");
+        assert_eq!(Mode::Ncv.to_string(), "NCV");
+        assert_eq!(Mode::LozV.to_string(), "LoZ V");
+        assert_eq!(Mode::Inrush.to_string(), "Inrush");
+    }
+
+    #[test]
+    fn mode_byte_is_raw_no_prefix() {
+        // Protocol spec: mode byte does NOT have 0x30 prefix
+        // All valid mode bytes should be in range 0x00..=0x1E
+        for b in 0x00..=0x1E_u8 {
+            assert!(
+                Mode::from_byte(b).is_ok(),
+                "byte {b:#04x} should be a valid mode"
+            );
+        }
+        // 0x30-prefixed versions should fail (they'd be 0x30..=0x4E)
+        for b in 0x30..=0x4E_u8 {
+            assert!(
+                Mode::from_byte(b).is_err(),
+                "byte {b:#04x} (0x30-prefixed) should not be valid"
+            );
+        }
+    }
+}
