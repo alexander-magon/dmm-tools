@@ -45,6 +45,7 @@ Rust workspace for communicating with the UNI-T UT61E+ multimeter via USB (CP211
 - Does `cargo clippy --workspace -- -D warnings` pass?
 - Does `cargo test --workspace` pass?
 - Are new public types/functions documented?
+- For CLI changes: is `docs/cli-reference.md` updated to reflect new/changed/removed commands and options?
 - For protocol code: are byte offsets and masks correct? Cross-check against the protocol spec in this file.
 - For unsafe or HID code: are buffer sizes correct? Can a malformed response cause a panic?
 - For GUI render paths: avoid per-frame allocations in hot loops. Use cached data with dirty flags where possible. Graph segments and gap ranges are cached — invalidate via `invalidate_cache()` when data changes.
