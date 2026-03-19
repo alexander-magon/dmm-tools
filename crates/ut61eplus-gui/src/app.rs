@@ -14,7 +14,11 @@ use crate::stats::Stats;
 /// Messages from the background thread to the UI.
 pub enum DmmMessage {
     Measurement(Measurement),
-    Connected(String, bool), // device name, experimental
+    Connected {
+        name: String,
+        experimental: bool,
+        supported_commands: Vec<String>,
+    },
     Disconnected(String),
     Error(String),
     /// Waiting for meter response (consecutive timeout count).
@@ -37,6 +41,8 @@ pub struct App {
     device_name: Option<String>,
     /// Whether the connected protocol is experimental (unverified).
     experimental: bool,
+    /// Commands supported by the connected protocol.
+    supported_commands: Vec<String>,
     /// When true, incoming measurements are ignored (connection stays alive).
     paused: bool,
     last_error: Option<String>,
@@ -77,6 +83,7 @@ impl App {
             connection_state: ConnectionState::Disconnected,
             device_name: None,
             experimental: false,
+            supported_commands: Vec::new(),
             paused: false,
             last_error: None,
             waiting_timeouts: 0,
@@ -199,13 +206,23 @@ impl App {
                 info!("background thread: connecting to device ({device_family})");
                 let mut dmm = match ut61eplus_lib::open_device(device_family) {
                     Ok(mut d) => {
-                        let experimental = d.profile().stability == Stability::Experimental;
+                        let profile = d.profile();
+                        let experimental = profile.stability == Stability::Experimental;
+                        let cmds: Vec<String> = profile
+                            .supported_commands
+                            .iter()
+                            .map(|s| s.to_string())
+                            .collect();
                         let name = if query_name {
                             d.get_name().ok().flatten().unwrap_or_default()
                         } else {
                             String::new()
                         };
-                        let _ = msg_tx.send(DmmMessage::Connected(name, experimental));
+                        let _ = msg_tx.send(DmmMessage::Connected {
+                            name,
+                            experimental,
+                            supported_commands: cmds,
+                        });
                         ctx_clone.request_repaint();
                         d
                     }
@@ -264,14 +281,24 @@ impl App {
                                 std::thread::sleep(std::time::Duration::from_secs(2));
                                 match ut61eplus_lib::open_device(device_family) {
                                     Ok(mut d) => {
-                                        let exp = d.profile().stability == Stability::Experimental;
+                                        let p = d.profile();
+                                        let exp = p.stability == Stability::Experimental;
+                                        let cmds: Vec<String> = p
+                                            .supported_commands
+                                            .iter()
+                                            .map(|s| s.to_string())
+                                            .collect();
                                         let name = if query_name {
                                             d.get_name().ok().flatten().unwrap_or_default()
                                         } else {
                                             String::new()
                                         };
                                         dmm = d;
-                                        let _ = msg_tx.send(DmmMessage::Connected(name, exp));
+                                        let _ = msg_tx.send(DmmMessage::Connected {
+                                            name,
+                                            experimental: exp,
+                                            supported_commands: cmds,
+                                        });
                                         ctx_clone.request_repaint();
                                         break;
                                     }
@@ -313,6 +340,7 @@ impl App {
         self.connection_state = ConnectionState::Disconnected;
         self.device_name = None;
         self.experimental = false;
+        self.supported_commands.clear();
         self.paused = false;
     }
 
@@ -327,9 +355,14 @@ impl App {
 
         for msg in messages {
             match msg {
-                DmmMessage::Connected(name, exp) => {
+                DmmMessage::Connected {
+                    name,
+                    experimental: exp,
+                    supported_commands: cmds,
+                } => {
                     self.connection_state = ConnectionState::Connected;
                     self.experimental = exp;
+                    self.supported_commands = cmds;
                     self.device_name = if name.is_empty() {
                         None
                     } else {
@@ -382,11 +415,15 @@ impl App {
     }
 
     fn show_remote_controls(&mut self, ui: &mut Ui, scale: f32) {
-        // Only show controls when we have actual measurement data
-        if self.connection_state != ConnectionState::Connected || self.last_measurement.is_none() {
+        // Only show controls when connected with measurement data and supported commands
+        if self.connection_state != ConnectionState::Connected
+            || self.last_measurement.is_none()
+            || self.supported_commands.is_empty()
+        {
             return;
         }
         let flags = self.last_measurement.as_ref().map(|m| m.flags);
+        let has_cmd = |cmd: &str| self.supported_commands.iter().any(|c| c == cmd);
         let dark = ui.visuals().dark_mode;
         let active_color = if dark {
             Color32::from_rgb(100, 180, 255)
@@ -413,7 +450,12 @@ impl App {
                 ("AUTO", auto, "auto"),
                 ("MIN/MAX", min_max, "minmax"),
                 ("PEAK", peak, "peak"),
+                ("SELECT", false, "select"),
+                ("LIGHT", false, "light"),
             ] {
+                if !has_cmd(cmd) {
+                    continue;
+                }
                 let text = if active {
                     RichText::new(label)
                         .font(egui::FontId::proportional(font_size))
@@ -425,24 +467,6 @@ impl App {
                 if ui.add(egui::Button::new(text)).clicked() {
                     self.send_command(cmd);
                 }
-            }
-
-            if ui
-                .add(egui::Button::new(
-                    RichText::new("SELECT").font(egui::FontId::proportional(font_size)),
-                ))
-                .clicked()
-            {
-                self.send_command("select");
-            }
-
-            if ui
-                .add(egui::Button::new(
-                    RichText::new("LIGHT").font(egui::FontId::proportional(font_size)),
-                ))
-                .clicked()
-            {
-                self.send_command("light");
             }
         });
     }

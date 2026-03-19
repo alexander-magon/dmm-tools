@@ -17,13 +17,22 @@ fn show_reading_sized(ui: &mut Ui, measurement: Option<&Measurement>, value_size
 
     match measurement {
         Some(m) => {
+            let display_str = |m: &Measurement| -> String {
+                if let Some(raw) = &m.display_raw {
+                    format_display_raw(raw)
+                } else {
+                    // Float-based protocols: format the numeric value
+                    match &m.value {
+                        MeasuredValue::Normal(v) => format!("{v:>7}"),
+                        MeasuredValue::Overload => format!("{:>7}", "OL"),
+                        MeasuredValue::NcvLevel(l) => format!("NCV {l}"),
+                    }
+                }
+            };
             let (value_text, value_color) = match &m.value {
-                MeasuredValue::Normal(_) => (
-                    format_display_raw(m.display_raw.as_deref().unwrap_or("")),
-                    ui.visuals().text_color(),
-                ),
+                MeasuredValue::Normal(_) => (display_str(m), ui.visuals().text_color()),
                 MeasuredValue::Overload => (
-                    format_display_raw(m.display_raw.as_deref().unwrap_or("")),
+                    display_str(m),
                     if ui.visuals().dark_mode {
                         Color32::from_rgb(220, 60, 60)
                     } else {
@@ -119,7 +128,15 @@ pub fn show_reading_compact(ui: &mut Ui, measurement: Option<&Measurement>) {
         Some(m) => {
             let value_text = match &m.value {
                 MeasuredValue::Normal(_) | MeasuredValue::Overload => {
-                    format_display_raw(m.display_raw.as_deref().unwrap_or(""))
+                    if let Some(raw) = &m.display_raw {
+                        format_display_raw(raw)
+                    } else {
+                        match &m.value {
+                            MeasuredValue::Normal(v) => format!("{v:>7}"),
+                            MeasuredValue::Overload => format!("{:>7}", "OL"),
+                            _ => String::new(),
+                        }
+                    }
                 }
                 MeasuredValue::NcvLevel(l) => format!("NCV {l}"),
             };

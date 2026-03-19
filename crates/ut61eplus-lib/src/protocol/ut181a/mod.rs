@@ -109,7 +109,30 @@ fn parse_unit_string(bytes: &[u8]) -> String {
     trimmed.to_string()
 }
 
-const UT181A_COMMANDS: &[&str] = &[];
+const UT181A_COMMANDS: &[&str] = &[
+    "hold",
+    "range",
+    "auto",
+    "minmax",
+    "exit_minmax",
+    "monitor",
+    "save",
+];
+
+/// Build a UT181A command frame: AB CD len_lo len_hi payload chk_lo chk_hi.
+/// Length = payload.len() + 2 (includes checksum).
+/// Checksum = LE sum of length field + payload bytes.
+fn build_command(payload: &[u8]) -> Vec<u8> {
+    let len_val = (payload.len() + 2) as u16;
+    let mut frame = vec![0xAB, 0xCD];
+    frame.push((len_val & 0xFF) as u8);
+    frame.push((len_val >> 8) as u8);
+    frame.extend_from_slice(payload);
+    let checksum: u16 = frame[2..].iter().map(|&b| b as u16).sum();
+    frame.push((checksum & 0xFF) as u8);
+    frame.push((checksum >> 8) as u8);
+    frame
+}
 
 /// Protocol implementation for the UT181A.
 pub struct Ut181aProtocol {
@@ -184,8 +207,34 @@ impl Protocol for Ut181aProtocol {
         Err(Error::Timeout)
     }
 
-    fn send_command(&mut self, _transport: &dyn Transport, command: &str) -> Result<()> {
-        Err(Error::UnsupportedCommand(command.to_string()))
+    fn send_command(&mut self, transport: &dyn Transport, command: &str) -> Result<()> {
+        let frame = match command {
+            "hold" => build_command(&[0x12]),
+            "range" => {
+                // Cycle to next manual range (range + 1, wrapping)
+                // Without state tracking, just toggle to range 1
+                build_command(&[0x02, 0x01])
+            }
+            "auto" => build_command(&[0x02, 0x00]),
+            "minmax" => build_command(&[0x04, 0x01, 0x00, 0x00, 0x00]),
+            "exit_minmax" => build_command(&[0x04, 0x00, 0x00, 0x00, 0x00]),
+            "monitor" => build_command(&[0x05, 0x01]),
+            "save" => build_command(&[0x06]),
+            _ => return Err(Error::UnsupportedCommand(command.to_string())),
+        };
+        debug!("ut181a: sending command {command}: {:02X?}", frame);
+        transport.write(&frame)?;
+
+        // Drain any response
+        self.rx_buf.clear();
+        let mut tmp = [0u8; 64];
+        for _ in 0..3 {
+            let n = transport.read_timeout(&mut tmp, 100)?;
+            if n == 0 {
+                break;
+            }
+        }
+        Ok(())
     }
 
     fn get_name(&mut self, _transport: &dyn Transport) -> Result<Option<String>> {
@@ -313,6 +362,37 @@ impl Protocol for Ut181aProtocol {
                 instruction: "Set meter to Temperature F",
                 command: None,
                 samples: 5,
+            },
+            // Remote command steps
+            CaptureStep {
+                id: "hold",
+                instruction: "V DC mode: we will send HOLD.",
+                command: Some("hold"),
+                samples: 3,
+            },
+            CaptureStep {
+                id: "hold_off",
+                instruction: "We will send HOLD again to turn it off.",
+                command: Some("hold"),
+                samples: 3,
+            },
+            CaptureStep {
+                id: "minmax",
+                instruction: "We will enable MIN/MAX.",
+                command: Some("minmax"),
+                samples: 3,
+            },
+            CaptureStep {
+                id: "minmax_off",
+                instruction: "We will disable MIN/MAX.",
+                command: Some("exit_minmax"),
+                samples: 3,
+            },
+            CaptureStep {
+                id: "auto",
+                instruction: "We will set auto-range.",
+                command: Some("auto"),
+                samples: 3,
             },
         ]
     }
@@ -529,5 +609,38 @@ mod tests {
         let m = parse_measurement(&payload).unwrap();
         assert_eq!(m.mode_raw, 0x7211);
         assert_eq!(m.mode, "Duty %");
+    }
+
+    #[test]
+    fn build_command_hold() {
+        let frame = build_command(&[0x12]);
+        // AB CD 03 00 12 15 00
+        assert_eq!(frame, vec![0xAB, 0xCD, 0x03, 0x00, 0x12, 0x15, 0x00]);
+    }
+
+    #[test]
+    fn build_command_set_range_auto() {
+        let frame = build_command(&[0x02, 0x00]);
+        // AB CD 04 00 02 00 06 00
+        assert_eq!(frame, vec![0xAB, 0xCD, 0x04, 0x00, 0x02, 0x00, 0x06, 0x00]);
+    }
+
+    #[test]
+    fn build_command_set_minmax_on() {
+        let frame = build_command(&[0x04, 0x01, 0x00, 0x00, 0x00]);
+        // AB CD 07 00 04 01 00 00 00 0C 00
+        assert_eq!(
+            frame,
+            vec![
+                0xAB, 0xCD, 0x07, 0x00, 0x04, 0x01, 0x00, 0x00, 0x00, 0x0C, 0x00
+            ]
+        );
+    }
+
+    #[test]
+    fn build_command_monitor_on() {
+        let frame = build_command(&[0x05, 0x01]);
+        // AB CD 04 00 05 01 0A 00
+        assert_eq!(frame, vec![0xAB, 0xCD, 0x04, 0x00, 0x05, 0x01, 0x0A, 0x00]);
     }
 }

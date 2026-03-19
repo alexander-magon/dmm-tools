@@ -86,7 +86,12 @@ fn unit_for_mode(mode: &str) -> &'static str {
     }
 }
 
-const UT171_COMMANDS: &[&str] = &[];
+const UT171_COMMANDS: &[&str] = &["connect", "pause"];
+
+/// Known UT171 command frames (complete wire bytes from RE docs).
+/// Frame format: AB CD len payload chk_lo chk_hi
+const UT171_CMD_CONNECT: &[u8] = &[0xAB, 0xCD, 0x04, 0x00, 0x0A, 0x01, 0x0F, 0x00];
+const UT171_CMD_PAUSE: &[u8] = &[0xAB, 0xCD, 0x04, 0x00, 0x0A, 0x00, 0x0E, 0x00];
 
 /// Protocol implementation for the UT171A/B/C.
 pub struct Ut171Protocol {
@@ -115,9 +120,11 @@ impl Ut171Protocol {
 }
 
 impl Protocol for Ut171Protocol {
-    fn init(&mut self, _transport: &dyn Transport) -> Result<()> {
-        // No trigger byte — user must manually enable "Communication ON"
-        debug!("ut171: init (streaming, no trigger needed)");
+    fn init(&mut self, transport: &dyn Transport) -> Result<()> {
+        // Send connect command to start streaming.
+        // User must also enable "Communication ON" on the meter.
+        debug!("ut171: sending connect command");
+        transport.write(UT171_CMD_CONNECT)?;
         Ok(())
     }
 
@@ -161,8 +168,15 @@ impl Protocol for Ut171Protocol {
         Err(Error::Timeout)
     }
 
-    fn send_command(&mut self, _transport: &dyn Transport, command: &str) -> Result<()> {
-        Err(Error::UnsupportedCommand(command.to_string()))
+    fn send_command(&mut self, transport: &dyn Transport, command: &str) -> Result<()> {
+        let frame = match command {
+            "connect" => UT171_CMD_CONNECT,
+            "pause" => UT171_CMD_PAUSE,
+            _ => return Err(Error::UnsupportedCommand(command.to_string())),
+        };
+        debug!("ut171: sending command {command}: {:02X?}", frame);
+        transport.write(frame)?;
+        Ok(())
     }
 
     fn get_name(&mut self, _transport: &dyn Transport) -> Result<Option<String>> {

@@ -59,11 +59,11 @@ enum Cmd {
         #[arg(long, default_value = "0")]
         count: usize,
     },
-    /// Send a button press command to the meter
+    /// Send a button press command to the meter.
+    /// Run with no arguments to list available commands for the selected device.
     Command {
-        /// The command to send
-        #[arg(value_enum)]
-        action: ButtonAction,
+        /// Command name (run without arguments to see available commands)
+        action: Option<String>,
     },
     /// Raw hex dump mode for protocol debugging
     Debug {
@@ -105,39 +105,6 @@ pub enum OutputFormat {
     Text,
     Csv,
     Json,
-}
-
-#[derive(Clone, ValueEnum)]
-enum ButtonAction {
-    Hold,
-    MinMax,
-    ExitMinMax,
-    Rel,
-    Range,
-    Auto,
-    Select,
-    Select2,
-    Light,
-    PeakMinMax,
-    ExitPeak,
-}
-
-impl ButtonAction {
-    fn to_command_name(&self) -> &'static str {
-        match self {
-            ButtonAction::Hold => "hold",
-            ButtonAction::MinMax => "minmax",
-            ButtonAction::ExitMinMax => "exit_minmax",
-            ButtonAction::Rel => "rel",
-            ButtonAction::Range => "range",
-            ButtonAction::Auto => "auto",
-            ButtonAction::Select => "select",
-            ButtonAction::Select2 => "select2",
-            ButtonAction::Light => "light",
-            ButtonAction::PeakMinMax => "peak",
-            ButtonAction::ExitPeak => "exit_peak",
-        }
-    }
 }
 
 fn parse_device_family(s: &str) -> Result<DeviceFamily, String> {
@@ -426,13 +393,50 @@ impl ReadStats {
 
 fn cmd_command(
     family: DeviceFamily,
-    action: ButtonAction,
+    action: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut dmm = open_with_help(family)?;
-    let cmd_name = action.to_command_name();
-    dmm.send_command(cmd_name)?;
-    println!("{} {cmd_name}", style("Sent").green());
-    Ok(())
+    match action {
+        Some(action) => {
+            let mut dmm = open_with_help(family)?;
+            dmm.send_command(&action)?;
+            println!("{} {action}", style("Sent").green());
+            Ok(())
+        }
+        None => {
+            // List supported commands for this device family without connecting
+            let protocol: Box<dyn ut61eplus_lib::protocol::Protocol> = match family {
+                DeviceFamily::Ut61EPlus => {
+                    Box::new(ut61eplus_lib::protocol::ut61eplus::Ut61PlusProtocol::new())
+                }
+                DeviceFamily::Ut8803 => {
+                    Box::new(ut61eplus_lib::protocol::ut8803::Ut8803Protocol::new())
+                }
+                DeviceFamily::Ut171 => {
+                    Box::new(ut61eplus_lib::protocol::ut171::Ut171Protocol::new())
+                }
+                DeviceFamily::Ut181a => {
+                    Box::new(ut61eplus_lib::protocol::ut181a::Ut181aProtocol::new())
+                }
+            };
+            let cmds = protocol.profile().supported_commands;
+            if cmds.is_empty() {
+                eprintln!(
+                    "{} No remote commands implemented yet for {}.",
+                    style("Note:").yellow(),
+                    protocol.profile().model_name,
+                );
+            } else {
+                println!(
+                    "Available commands for {}:",
+                    style(protocol.profile().model_name).bold()
+                );
+                for cmd in cmds {
+                    println!("  {cmd}");
+                }
+            }
+            Ok(())
+        }
+    }
 }
 
 fn cmd_debug(
@@ -599,7 +603,18 @@ mod tests {
         let cli = Cli::try_parse_from(["ut61eplus", "command", "hold"]).unwrap();
         match cli.command {
             Cmd::Command { action } => {
-                assert!(matches!(action, ButtonAction::Hold));
+                assert_eq!(action.as_deref(), Some("hold"));
+            }
+            _ => panic!("expected Command"),
+        }
+    }
+
+    #[test]
+    fn clap_parse_command_no_action_lists_commands() {
+        let cli = Cli::try_parse_from(["ut61eplus", "command"]).unwrap();
+        match cli.command {
+            Cmd::Command { action } => {
+                assert!(action.is_none());
             }
             _ => panic!("expected Command"),
         }
@@ -741,20 +756,5 @@ mod tests {
         let output = String::from_utf8(buf).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert!((parsed["value"].as_f64().unwrap() - (-12.345)).abs() < 1e-6);
-    }
-
-    #[test]
-    fn button_action_to_command_name() {
-        assert_eq!(ButtonAction::Hold.to_command_name(), "hold");
-        assert_eq!(ButtonAction::MinMax.to_command_name(), "minmax");
-        assert_eq!(ButtonAction::ExitMinMax.to_command_name(), "exit_minmax");
-        assert_eq!(ButtonAction::Rel.to_command_name(), "rel");
-        assert_eq!(ButtonAction::Range.to_command_name(), "range");
-        assert_eq!(ButtonAction::Auto.to_command_name(), "auto");
-        assert_eq!(ButtonAction::Select.to_command_name(), "select");
-        assert_eq!(ButtonAction::Select2.to_command_name(), "select2");
-        assert_eq!(ButtonAction::Light.to_command_name(), "light");
-        assert_eq!(ButtonAction::PeakMinMax.to_command_name(), "peak");
-        assert_eq!(ButtonAction::ExitPeak.to_command_name(), "exit_peak");
     }
 }
