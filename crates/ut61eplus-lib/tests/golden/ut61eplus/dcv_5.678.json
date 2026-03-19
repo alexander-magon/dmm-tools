@@ -1,0 +1,20 @@
+{
+  "description": "DC Voltage 5.678V on 22V range, all flags default (AUTO on)",
+  "payload_hex": "0231 2020 352e 3637 3800 0030 3030",
+  "mode": "DC V",
+  "value": 5.678,
+  "unit": "V",
+  "range_label": "22V",
+  "flags": {
+    "hold": false,
+    "rel": false,
+    "min": false,
+    "max": false,
+    "auto_range": true,
+    "low_battery": false,
+    "hv_warning": false,
+    "dc": false,
+    "peak_max": false,
+    "peak_min": false
+  }
+}
