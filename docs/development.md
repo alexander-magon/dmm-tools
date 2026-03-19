@@ -53,7 +53,7 @@ with `Dmm<T>`, the CLI, and (eventually) the GUI.
 ## Golden File Tests
 
 Golden file tests verify measurement parsing against known-good byte sequences.
-Each `.yaml` file in `crates/ut61eplus-lib/tests/golden/<family>/` uses the same
+Each `.yaml` file in `crates/ut61eplus-lib/tests/golden/{family}/` uses the same
 format as capture YAML samples (`raw_hex`, `mode`, `value`, `unit`, `range_label`,
 `flags`). This means you can copy a sample directly from a capture report into a
 golden file.
@@ -62,7 +62,7 @@ To add a golden test:
 
 1. Run `ut61eplus --device <family> capture` and complete the steps
 2. Open the capture YAML and find a sample with known-good values
-3. Copy the sample fields into a new `.yaml` file in `tests/golden/<family>/`
+3. Copy the sample fields into a new `.yaml` file in `tests/golden/{family}/`
 4. Run `cargo test --workspace` to verify
 
 Golden tests run as part of the standard test suite. They are the primary
