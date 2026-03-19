@@ -1,3 +1,5 @@
+pub mod ut61b_plus;
+pub mod ut61d_plus;
 pub mod ut61e_plus;
 
 use super::mode::Mode;

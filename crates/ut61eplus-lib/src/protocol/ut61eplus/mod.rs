@@ -46,15 +46,40 @@ impl Ut61PlusProtocol {
         Self::with_table(Box::new(tables::ut61e_plus::Ut61ePlusTable::new()))
     }
 
+    /// Create a protocol instance for a specific model name.
+    ///
+    /// Recognized model strings (case-insensitive):
+    /// - "ut61e+", "ut161e" -> UT61E+ table (Verified)
+    /// - "ut61b+", "ut161b" -> UT61B+ table (Experimental)
+    /// - "ut61d+", "ut161d" -> UT61D+ table (Experimental)
+    ///
+    /// Returns `None` if the model string is not recognized.
+    pub fn for_model(model: &str) -> Option<Self> {
+        let table: Box<dyn DeviceTable> = match model.to_lowercase().as_str() {
+            "ut61e+" | "ut161e" => Box::new(tables::ut61e_plus::Ut61ePlusTable::new()),
+            "ut61b+" | "ut161b" => Box::new(tables::ut61b_plus::Ut61bPlusTable::new()),
+            "ut61d+" | "ut161d" => Box::new(tables::ut61d_plus::Ut61dPlusTable::new()),
+            _ => return None,
+        };
+        Some(Self::with_table(table))
+    }
+
     pub fn with_table(table: Box<dyn DeviceTable>) -> Self {
         let model_name = table.model_name();
+        // UT61E+ is the only model verified against real hardware.
+        // B+ and D+ tables are based on RE of vendor software + manual specs.
+        let stability = if model_name == "UNI-T UT61E+" {
+            Stability::Verified
+        } else {
+            Stability::Experimental
+        };
         Self {
             table,
             rx_buf: Vec::with_capacity(64),
             profile: DeviceProfile {
                 family_name: "UT61+/UT161",
                 model_name,
-                stability: Stability::Verified,
+                stability,
                 supported_commands: UT61EPLUS_COMMANDS,
             },
         }
