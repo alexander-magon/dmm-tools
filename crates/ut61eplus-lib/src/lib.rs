@@ -115,9 +115,24 @@ impl<T: Transport> Dmm<T> {
     }
 
     /// Read and parse a measurement response.
+    ///
+    /// Skips non-measurement frames (e.g. short command ack payloads) and
+    /// keeps reading until a full measurement frame arrives or timeout.
     fn read_response(&mut self) -> Result<Measurement> {
-        let payload = self.read_raw_payload()?;
-        Measurement::parse(&payload, self.table.as_ref())
+        // Allow a few retries to skip ack frames that weren't fully drained
+        // after a send_command().
+        for _ in 0..5 {
+            let payload = self.read_raw_payload()?;
+            if payload.len() >= protocol::MEASUREMENT_PAYLOAD_LEN {
+                return Measurement::parse(&payload, self.table.as_ref());
+            }
+            debug!(
+                "skipping non-measurement frame ({} bytes): {:02X?}",
+                payload.len(),
+                payload
+            );
+        }
+        Err(Error::Timeout)
     }
 }
 
