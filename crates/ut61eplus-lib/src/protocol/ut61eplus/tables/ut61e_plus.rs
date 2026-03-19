@@ -1,5 +1,5 @@
 use super::{DeviceTable, RangeInfo};
-use crate::mode::Mode;
+use crate::protocol::ut61eplus::mode::Mode;
 
 /// Device table for the UNI-T UT61E+.
 pub struct Ut61ePlusTable {

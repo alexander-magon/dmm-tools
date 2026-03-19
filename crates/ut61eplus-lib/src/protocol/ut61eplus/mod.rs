@@ -1,0 +1,356 @@
+pub mod command;
+pub mod mode;
+pub mod tables;
+
+use crate::error::{Error, Result};
+use crate::flags::StatusFlags;
+use crate::measurement::{MeasuredValue, Measurement};
+use crate::protocol::framing::{self, UT61EPLUS_MEASUREMENT_PAYLOAD_LEN};
+use crate::protocol::{DeviceProfile, Protocol, Stability};
+use crate::transport::Transport;
+use command::Command;
+use log::debug;
+use mode::Mode;
+use std::time::Instant;
+use tables::DeviceTable;
+
+const UT61EPLUS_COMMANDS: &[&str] = &[
+    "hold",
+    "minmax",
+    "exit_minmax",
+    "range",
+    "auto",
+    "rel",
+    "select2",
+    "select",
+    "light",
+    "peak",
+    "exit_peak",
+];
+
+/// Protocol implementation for the UT61E+/UT61B+/UT61D+/UT161 family.
+pub struct Ut61PlusProtocol {
+    table: Box<dyn DeviceTable>,
+    rx_buf: Vec<u8>,
+    profile: DeviceProfile,
+}
+
+impl Default for Ut61PlusProtocol {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Ut61PlusProtocol {
+    pub fn new() -> Self {
+        Self::with_table(Box::new(tables::ut61e_plus::Ut61ePlusTable::new()))
+    }
+
+    pub fn with_table(table: Box<dyn DeviceTable>) -> Self {
+        let model_name = table.model_name();
+        Self {
+            table,
+            rx_buf: Vec::with_capacity(64),
+            profile: DeviceProfile {
+                family_name: "UT61+/UT161",
+                model_name,
+                stability: Stability::Verified,
+                supported_commands: UT61EPLUS_COMMANDS,
+            },
+        }
+    }
+
+    /// Read a raw payload frame from the transport.
+    fn read_raw_payload(&mut self, transport: &dyn Transport) -> Result<Vec<u8>> {
+        const READ_TIMEOUT_MS: i32 = 2000;
+        const MAX_ATTEMPTS: usize = 64;
+
+        for _ in 0..MAX_ATTEMPTS {
+            match framing::extract_frame_abcd_be16(&self.rx_buf)? {
+                Some((payload, consumed)) => {
+                    self.rx_buf.drain(..consumed);
+                    return Ok(payload);
+                }
+                None => {
+                    let mut tmp = [0u8; 64];
+                    let n = transport.read_timeout(&mut tmp, READ_TIMEOUT_MS)?;
+                    if n == 0 {
+                        return Err(Error::Timeout);
+                    }
+                    self.rx_buf.extend_from_slice(&tmp[..n]);
+                }
+            }
+        }
+
+        Err(Error::Timeout)
+    }
+
+    /// Read and parse a measurement response, skipping non-measurement frames.
+    fn read_measurement(&mut self, transport: &dyn Transport) -> Result<Measurement> {
+        for _ in 0..5 {
+            let payload = self.read_raw_payload(transport)?;
+            if payload.len() >= UT61EPLUS_MEASUREMENT_PAYLOAD_LEN {
+                return parse_measurement(&payload, self.table.as_ref());
+            }
+            debug!(
+                "skipping non-measurement frame ({} bytes): {:02X?}",
+                payload.len(),
+                payload
+            );
+        }
+        Err(Error::Timeout)
+    }
+
+    fn command_from_name(name: &str) -> Result<Command> {
+        match name {
+            "hold" => Ok(Command::Hold),
+            "minmax" => Ok(Command::MinMax),
+            "exit_minmax" => Ok(Command::ExitMinMax),
+            "range" => Ok(Command::Range),
+            "auto" => Ok(Command::Auto),
+            "rel" => Ok(Command::Rel),
+            "select2" => Ok(Command::Select2),
+            "select" => Ok(Command::Select),
+            "light" => Ok(Command::Light),
+            "peak" => Ok(Command::PeakMinMax),
+            "exit_peak" => Ok(Command::ExitPeak),
+            _ => Err(Error::UnsupportedCommand(name.to_string())),
+        }
+    }
+}
+
+impl Protocol for Ut61PlusProtocol {
+    fn init(&mut self, _transport: &dyn Transport) -> Result<()> {
+        // CP2110 init (UART enable, config, purge) is done by Cp2110::init_uart()
+        // before the protocol is created. Nothing else needed here.
+        Ok(())
+    }
+
+    fn request_measurement(&mut self, transport: &dyn Transport) -> Result<Measurement> {
+        let cmd = Command::GetMeasurement.encode();
+        debug!("sending measurement request");
+        transport.write(&cmd)?;
+        self.read_measurement(transport)
+    }
+
+    fn send_command(&mut self, transport: &dyn Transport, command: &str) -> Result<()> {
+        let cmd = Self::command_from_name(command)?;
+        let encoded = cmd.encode();
+        debug!("sending command: {command}");
+        transport.write(&encoded)?;
+
+        // Drain any ack/response the meter sends back.
+        self.rx_buf.clear();
+        let mut tmp = [0u8; 64];
+        for _ in 0..3 {
+            let n = transport.read_timeout(&mut tmp, 50)?;
+            if n == 0 {
+                break;
+            }
+            debug!("drained {} bytes after command", n);
+        }
+
+        Ok(())
+    }
+
+    fn get_name(&mut self, transport: &dyn Transport) -> Result<Option<String>> {
+        let cmd = Command::GetName.encode();
+        debug!("sending get_name request");
+        transport.write(&cmd)?;
+
+        // Read two frames: ack + name
+        for _ in 0..2 {
+            let payload = self.read_raw_payload(transport)?;
+            if payload.first() != Some(&0xFF) {
+                let name = String::from_utf8_lossy(&payload).to_string();
+                debug!("device name: {name}");
+                return Ok(Some(name));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn profile(&self) -> &DeviceProfile {
+        &self.profile
+    }
+}
+
+/// Parse a UT61E+/UT61B+/UT61D+/UT161 measurement payload (pure function).
+///
+/// Layout (verified against real device captures):
+/// - byte 0:    mode   (raw, no masking — does not have 0x30 prefix)
+/// - byte 1:    range  (& 0x0F — has 0x30 prefix)
+/// - bytes 2-8: display value (7 ASCII chars, no masking needed)
+/// - byte 9:    progress high (raw, no 0x30 prefix)
+/// - byte 10:   progress low  (raw, no 0x30 prefix)
+/// - byte 11:   flag1  (& 0x0F — has 0x30 prefix)
+/// - byte 12:   flag2  (& 0x0F — has 0x30 prefix)
+/// - byte 13:   flag3  (& 0x0F — has 0x30 prefix)
+pub fn parse_measurement(payload: &[u8], table: &dyn DeviceTable) -> Result<Measurement> {
+    if payload.len() < UT61EPLUS_MEASUREMENT_PAYLOAD_LEN {
+        return Err(Error::invalid_response(
+            format!(
+                "payload too short: {} bytes, expected {}",
+                payload.len(),
+                UT61EPLUS_MEASUREMENT_PAYLOAD_LEN
+            ),
+            payload,
+        ));
+    }
+
+    // Mode byte is raw (no 0x30 prefix), range byte has 0x30 prefix
+    let mode_byte = payload[0];
+    let range_byte = payload[1] & 0x0F;
+    let display_bytes = &payload[2..9];
+    // Progress bytes are raw (no 0x30 prefix observed on real device)
+    let progress_hi = payload[9] as u16;
+    let progress_lo = payload[10] as u16;
+    let flag1 = payload[11] & 0x0F;
+    let flag2 = payload[12] & 0x0F;
+    let flag3 = payload[13] & 0x0F;
+
+    let mode = Mode::from_byte(mode_byte)?;
+    let display_raw = String::from_utf8_lossy(display_bytes).to_string();
+    let progress = (progress_hi << 4) | progress_lo;
+    let flags = StatusFlags::parse(flag1, flag2, flag3);
+
+    // Look up range info from device table
+    let range_info = table.range_info(mode, range_byte);
+    let unit = range_info.map(|r| r.unit).unwrap_or("");
+    let range_label = range_info.map(|r| r.label).unwrap_or("");
+
+    // Parse display value.
+    let display_trimmed = display_raw.trim();
+    let display_compact: String = display_trimmed.chars().filter(|c| *c != ' ').collect();
+    let value = if mode == Mode::Ncv {
+        let level = display_compact.parse::<u8>().unwrap_or(0);
+        MeasuredValue::NcvLevel(level)
+    } else if display_compact == "OL" || display_compact.contains("OL") {
+        MeasuredValue::Overload
+    } else {
+        match display_compact.parse::<f64>() {
+            Ok(v) => MeasuredValue::Normal(v),
+            Err(_) => {
+                debug!(
+                    "could not parse display value: {:?} (compact: {:?})",
+                    display_trimmed, display_compact
+                );
+                MeasuredValue::Overload
+            }
+        }
+    };
+
+    Ok(Measurement {
+        timestamp: Instant::now(),
+        mode: mode.to_string(),
+        mode_raw: mode_byte as u16,
+        value,
+        unit: unit.to_string(),
+        range_label: range_label.to_string(),
+        progress: Some(progress),
+        display_raw: Some(display_raw),
+        flags,
+        raw_payload: payload[..UT61EPLUS_MEASUREMENT_PAYLOAD_LEN].to_vec(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tables::ut61e_plus::Ut61ePlusTable;
+
+    fn make_payload(
+        mode: u8,
+        range: u8,
+        display: &[u8; 7],
+        progress: (u8, u8),
+        flags: (u8, u8, u8),
+    ) -> Vec<u8> {
+        vec![
+            mode,
+            range | 0x30,
+            display[0],
+            display[1],
+            display[2],
+            display[3],
+            display[4],
+            display[5],
+            display[6],
+            progress.0,
+            progress.1,
+            flags.0 | 0x30,
+            flags.1 | 0x30,
+            flags.2 | 0x30,
+        ]
+    }
+
+    #[test]
+    fn parse_dc_voltage() {
+        let table = Ut61ePlusTable::new();
+        let payload = make_payload(0x02, 0x01, b" 12.345", (0x05, 0x0A), (0x00, 0x00, 0x00));
+        let m = parse_measurement(&payload, &table).unwrap();
+        assert_eq!(m.mode, "DC V");
+        assert_eq!(m.mode_raw, 0x02);
+        assert!(matches!(m.value, MeasuredValue::Normal(v) if (v - 12.345).abs() < 1e-6));
+        assert_eq!(m.unit, "V");
+        assert_eq!(m.range_label, "22V");
+        assert!(m.flags.auto_range);
+    }
+
+    #[test]
+    fn parse_overload() {
+        let table = Ut61ePlusTable::new();
+        let payload = make_payload(0x06, 0x00, b"    OL ", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let m = parse_measurement(&payload, &table).unwrap();
+        assert_eq!(m.mode, "Ω");
+        assert!(matches!(m.value, MeasuredValue::Overload));
+        assert_eq!(m.unit, "Ω");
+    }
+
+    #[test]
+    fn parse_with_hold_flag() {
+        let table = Ut61ePlusTable::new();
+        let payload = make_payload(0x02, 0x00, b"  1.234", (0x00, 0x00), (0x02, 0x00, 0x00));
+        let m = parse_measurement(&payload, &table).unwrap();
+        assert!(m.flags.hold);
+        assert!(m.flags.auto_range);
+        assert!(!m.flags.rel);
+    }
+
+    #[test]
+    fn parse_negative_with_space() {
+        let table = Ut61ePlusTable::new();
+        let payload = make_payload(0x03, 0x00, b"- 55.79", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let m = parse_measurement(&payload, &table).unwrap();
+        assert!(matches!(m.value, MeasuredValue::Normal(v) if (v - (-55.79)).abs() < 1e-6));
+    }
+
+    #[test]
+    fn parse_payload_too_short() {
+        let table = Ut61ePlusTable::new();
+        let payload = vec![0x30; 10];
+        assert!(parse_measurement(&payload, &table).is_err());
+    }
+
+    #[test]
+    fn display_format() {
+        let table = Ut61ePlusTable::new();
+        let payload = make_payload(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x02, 0x00, 0x00));
+        let m = parse_measurement(&payload, &table).unwrap();
+        let s = m.to_string();
+        assert!(s.contains("5.678"));
+        assert!(s.contains("V"));
+        assert!(s.contains("HOLD"));
+        assert!(s.contains("AUTO"));
+    }
+
+    #[test]
+    fn parse_ncv() {
+        let table = Ut61ePlusTable::new();
+        let payload = make_payload(0x14, 0x00, b"      3", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let m = parse_measurement(&payload, &table).unwrap();
+        assert_eq!(m.mode, "NCV");
+        assert!(matches!(m.value, MeasuredValue::NcvLevel(3)));
+    }
+}

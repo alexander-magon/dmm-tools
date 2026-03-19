@@ -37,7 +37,7 @@ pub fn format_measurement(
             };
             let obj = serde_json::json!({
                 "timestamp": chrono::Local::now().to_rfc3339(),
-                "mode": m.mode.to_string(),
+                "mode": m.mode,
                 "value": value,
                 "unit": m.unit,
                 "range": m.range_label,

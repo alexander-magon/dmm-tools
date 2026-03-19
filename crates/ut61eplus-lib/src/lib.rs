@@ -1,36 +1,34 @@
-pub mod command;
 pub mod cp2110;
 pub mod error;
 pub mod flags;
 pub mod measurement;
-pub mod mode;
-pub(crate) mod protocol;
-pub mod tables;
+pub mod protocol;
 pub mod transport;
 
-use command::Command;
 use error::{Error, Result};
-use log::{debug, info};
-use measurement::Measurement;
-use tables::DeviceTable;
+use log::info;
+use protocol::{DeviceFamily, Protocol};
 use transport::Transport;
 
 /// Top-level handle for communicating with the multimeter.
 pub struct Dmm<T: Transport> {
     transport: T,
-    table: Box<dyn DeviceTable>,
-    rx_buf: Vec<u8>,
+    protocol: Box<dyn Protocol>,
 }
 
 impl<T: Transport> Dmm<T> {
-    /// Create a new Dmm with the given transport and device table.
-    pub fn new(transport: T, table: Box<dyn DeviceTable>) -> Self {
-        info!("connected to {}", table.model_name());
-        Self {
+    /// Create a new Dmm with the given transport and protocol.
+    pub fn new(transport: T, mut protocol: Box<dyn Protocol>) -> Result<Self> {
+        let profile = protocol.profile();
+        info!(
+            "connected to {} ({})",
+            profile.model_name, profile.family_name
+        );
+        protocol.init(&transport)?;
+        Ok(Self {
             transport,
-            table,
-            rx_buf: Vec::with_capacity(64),
-        }
+            protocol,
+        })
     }
 
     /// Access the underlying transport (e.g. for CP2110-specific queries).
@@ -39,110 +37,33 @@ impl<T: Transport> Dmm<T> {
     }
 
     /// Request a single measurement from the meter.
-    pub fn request_measurement(&mut self) -> Result<Measurement> {
-        let cmd = Command::GetMeasurement.encode();
-        debug!("sending measurement request");
-        self.transport.write(&cmd)?;
-        self.read_response()
+    pub fn request_measurement(&mut self) -> Result<measurement::Measurement> {
+        self.protocol.request_measurement(&self.transport)
     }
 
-    /// Send a button-press command to the meter.
-    ///
-    /// After sending, drains any response/ack from the meter to avoid
-    /// stale bytes confusing the next measurement request.
-    pub fn send_command(&mut self, command: Command) -> Result<()> {
-        let cmd = command.encode();
-        debug!("sending command: {command:?}");
-        self.transport.write(&cmd)?;
-
-        // Drain any ack/response the meter sends back.
-        // Use short timeout and bounded iterations to avoid discarding
-        // a measurement response that arrives immediately after the ack.
-        self.rx_buf.clear();
-        let mut tmp = [0u8; 64];
-        for _ in 0..3 {
-            let n = self.transport.read_timeout(&mut tmp, 50)?;
-            if n == 0 {
-                break;
-            }
-            debug!("drained {} bytes after command", n);
-        }
-
-        Ok(())
+    /// Send a named command to the meter (e.g. "hold", "range", "auto").
+    pub fn send_command(&mut self, command: &str) -> Result<()> {
+        self.protocol.send_command(&self.transport, command)
     }
 
     /// Request the device name from the meter.
-    ///
-    /// Returns the name string (e.g., "UT61E+"). The meter responds with
-    /// two frames: an acknowledgment (payload `FF 00`) and the name.
-    pub fn get_name(&mut self) -> Result<String> {
-        let cmd = Command::GetName.encode();
-        debug!("sending get_name request");
-        self.transport.write(&cmd)?;
-
-        // Read two frames: ack + name
-        for _ in 0..2 {
-            let payload = self.read_raw_payload()?;
-            // The name frame has ASCII payload (not the FF 00 ack)
-            if payload.first() != Some(&0xFF) {
-                let name = String::from_utf8_lossy(&payload).to_string();
-                debug!("device name: {name}");
-                return Ok(name);
-            }
-        }
-
-        Err(Error::InvalidResponse("no name frame received".to_string()))
+    pub fn get_name(&mut self) -> Result<Option<String>> {
+        self.protocol.get_name(&self.transport)
     }
 
-    /// Read a raw payload frame (used for non-measurement responses).
-    fn read_raw_payload(&mut self) -> Result<Vec<u8>> {
-        const READ_TIMEOUT_MS: i32 = 2000;
-        const MAX_ATTEMPTS: usize = 64;
-
-        for _ in 0..MAX_ATTEMPTS {
-            match protocol::extract_frame(&self.rx_buf)? {
-                Some((payload, consumed)) => {
-                    self.rx_buf.drain(..consumed);
-                    return Ok(payload);
-                }
-                None => {
-                    let mut tmp = [0u8; 64];
-                    let n = self.transport.read_timeout(&mut tmp, READ_TIMEOUT_MS)?;
-                    if n == 0 {
-                        return Err(Error::Timeout);
-                    }
-                    self.rx_buf.extend_from_slice(&tmp[..n]);
-                }
-            }
-        }
-
-        Err(Error::Timeout)
-    }
-
-    /// Read and parse a measurement response.
-    ///
-    /// Skips non-measurement frames (e.g. short command ack payloads) and
-    /// keeps reading until a full measurement frame arrives or timeout.
-    fn read_response(&mut self) -> Result<Measurement> {
-        // Allow a few retries to skip ack frames that weren't fully drained
-        // after a send_command().
-        for _ in 0..5 {
-            let payload = self.read_raw_payload()?;
-            if payload.len() >= protocol::MEASUREMENT_PAYLOAD_LEN {
-                return Measurement::parse(&payload, self.table.as_ref());
-            }
-            debug!(
-                "skipping non-measurement frame ({} bytes): {:02X?}",
-                payload.len(),
-                payload
-            );
-        }
-        Err(Error::Timeout)
+    /// Get the device profile.
+    pub fn profile(&self) -> &protocol::DeviceProfile {
+        self.protocol.profile()
     }
 }
 
 /// Open the first UT61E+ device found via hidapi and return an initialized Dmm.
 pub fn open() -> Result<Dmm<cp2110::Cp2110>> {
+    open_device(DeviceFamily::Ut61EPlus)
+}
+
+/// Open a device with the specified protocol family.
+pub fn open_device(family: DeviceFamily) -> Result<Dmm<cp2110::Cp2110>> {
     let api = hidapi::HidApi::new().map_err(Error::Hid)?;
     let device = api
         .open(cp2110::VID, cp2110::PID)
@@ -154,8 +75,17 @@ pub fn open() -> Result<Dmm<cp2110::Cp2110>> {
     let cp = cp2110::Cp2110::new(device);
     cp.init_uart()?;
 
-    let table = Box::new(tables::ut61e_plus::Ut61ePlusTable::new());
-    Ok(Dmm::new(cp, table))
+    let protocol: Box<dyn Protocol> = match family {
+        DeviceFamily::Ut61EPlus => Box::new(protocol::ut61eplus::Ut61PlusProtocol::new()),
+        // Other families will be added in subsequent steps
+        _ => {
+            return Err(Error::invalid_response_msg(format!(
+                "protocol family {family} not yet implemented"
+            )));
+        }
+    };
+
+    Dmm::new(cp, protocol)
 }
 
 /// List all connected CP2110 devices.
@@ -200,7 +130,7 @@ impl std::fmt::Display for DeviceInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tables::ut61e_plus::Ut61ePlusTable;
+    use crate::protocol::ut61eplus::Ut61PlusProtocol;
     use crate::transport::mock::MockTransport;
 
     /// Build a complete response frame (header + length + payload + checksum)
@@ -243,36 +173,34 @@ mod tests {
         let response =
             make_measurement_response(0x02, 0x01, b"  5.678", (0x05, 0x0A), (0x00, 0x00, 0x00));
         let mock = MockTransport::new(vec![response]);
-        let table = Box::new(Ut61ePlusTable::new());
-        let mut dmm = Dmm::new(mock, table);
+        let protocol = Box::new(Ut61PlusProtocol::new());
+        let mut dmm = Dmm::new(mock, protocol).unwrap();
 
         let m = dmm.request_measurement().unwrap();
-        assert_eq!(m.mode, mode::Mode::DcV);
+        assert_eq!(m.mode, "DC V");
         assert_eq!(m.unit, "V");
         assert!(m.flags.auto_range);
     }
 
     #[test]
     fn dmm_split_response() {
-        // Response arrives in two chunks
         let full =
             make_measurement_response(0x06, 0x02, b" 12.345", (0x00, 0x00), (0x00, 0x00, 0x00));
         let (part1, part2) = full.split_at(10);
         let mock = MockTransport::new(vec![part1.to_vec(), part2.to_vec()]);
-        let table = Box::new(Ut61ePlusTable::new());
-        let mut dmm = Dmm::new(mock, table);
+        let protocol = Box::new(Ut61PlusProtocol::new());
+        let mut dmm = Dmm::new(mock, protocol).unwrap();
 
         let m = dmm.request_measurement().unwrap();
-        assert_eq!(m.mode, mode::Mode::Ohm);
+        assert_eq!(m.mode, "Ω");
         assert_eq!(m.range_label, "22kΩ");
     }
 
     #[test]
     fn dmm_timeout() {
-        // Empty responses → timeout
         let mock = MockTransport::new(vec![]);
-        let table = Box::new(Ut61ePlusTable::new());
-        let mut dmm = Dmm::new(mock, table);
+        let protocol = Box::new(Ut61PlusProtocol::new());
+        let mut dmm = Dmm::new(mock, protocol).unwrap();
 
         let result = dmm.request_measurement();
         assert!(matches!(result, Err(Error::Timeout)));
@@ -283,8 +211,8 @@ mod tests {
         let response =
             make_measurement_response(0x02, 0x00, b" 0.0000", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mock = MockTransport::new(vec![response]);
-        let table = Box::new(Ut61ePlusTable::new());
-        let mut dmm = Dmm::new(mock, table);
+        let protocol = Box::new(Ut61PlusProtocol::new());
+        let mut dmm = Dmm::new(mock, protocol).unwrap();
 
         let _ = dmm.request_measurement().unwrap();
 
@@ -296,19 +224,32 @@ mod tests {
     #[test]
     fn dmm_send_command() {
         let mock = MockTransport::new(vec![]);
-        let table = Box::new(Ut61ePlusTable::new());
-        let mut dmm = Dmm::new(mock, table);
+        let protocol = Box::new(Ut61PlusProtocol::new());
+        let mut dmm = Dmm::new(mock, protocol).unwrap();
 
-        dmm.send_command(Command::Hold).unwrap();
+        dmm.send_command("hold").unwrap();
 
         let written = dmm.transport.written.borrow();
         assert_eq!(written.len(), 1);
-        assert_eq!(written[0], Command::Hold.encode());
+        assert_eq!(
+            written[0],
+            crate::protocol::ut61eplus::command::Command::Hold.encode()
+        );
+    }
+
+    #[test]
+    fn dmm_unsupported_command() {
+        let mock = MockTransport::new(vec![]);
+        let protocol = Box::new(Ut61PlusProtocol::new());
+        let mut dmm = Dmm::new(mock, protocol).unwrap();
+
+        let result = dmm.send_command("nonexistent");
+        assert!(matches!(result, Err(Error::UnsupportedCommand(_))));
     }
 
     #[test]
     fn dmm_response_with_leading_garbage() {
-        let mut data = vec![0xFF, 0xFE, 0x00]; // garbage before frame
+        let mut data = vec![0xFF, 0xFE, 0x00];
         data.extend_from_slice(&make_measurement_response(
             0x00,
             0x00,
@@ -317,11 +258,11 @@ mod tests {
             (0x00, 0x00, 0x00),
         ));
         let mock = MockTransport::new(vec![data]);
-        let table = Box::new(Ut61ePlusTable::new());
-        let mut dmm = Dmm::new(mock, table);
+        let protocol = Box::new(Ut61PlusProtocol::new());
+        let mut dmm = Dmm::new(mock, protocol).unwrap();
 
         let m = dmm.request_measurement().unwrap();
-        assert_eq!(m.mode, mode::Mode::AcV);
+        assert_eq!(m.mode, "AC V");
     }
 
     #[test]
@@ -331,8 +272,8 @@ mod tests {
         let r2 =
             make_measurement_response(0x02, 0x00, b"  2.000", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mock = MockTransport::new(vec![r1, r2]);
-        let table = Box::new(Ut61ePlusTable::new());
-        let mut dmm = Dmm::new(mock, table);
+        let protocol = Box::new(Ut61PlusProtocol::new());
+        let mut dmm = Dmm::new(mock, protocol).unwrap();
 
         let m1 = dmm.request_measurement().unwrap();
         let m2 = dmm.request_measurement().unwrap();
@@ -372,11 +313,11 @@ mod tests {
         let response =
             make_measurement_response(0x09, 0x03, b"  4.567", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mock = MockTransport::new(vec![response]);
-        let table = Box::new(Ut61ePlusTable::new());
-        let mut dmm = Dmm::new(mock, table);
+        let protocol = Box::new(Ut61PlusProtocol::new());
+        let mut dmm = Dmm::new(mock, protocol).unwrap();
 
         let m = dmm.request_measurement().unwrap();
-        assert_eq!(m.mode, mode::Mode::Capacitance);
+        assert_eq!(m.mode, "Capacitance");
         assert_eq!(m.unit, "µF");
         assert_eq!(m.range_label, "22µF");
     }
@@ -386,11 +327,11 @@ mod tests {
         let response =
             make_measurement_response(0x04, 0x02, b" 1.2345", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mock = MockTransport::new(vec![response]);
-        let table = Box::new(Ut61ePlusTable::new());
-        let mut dmm = Dmm::new(mock, table);
+        let protocol = Box::new(Ut61PlusProtocol::new());
+        let mut dmm = Dmm::new(mock, protocol).unwrap();
 
         let m = dmm.request_measurement().unwrap();
-        assert_eq!(m.mode, mode::Mode::Hz);
+        assert_eq!(m.mode, "Hz");
         assert_eq!(m.unit, "kHz");
         assert_eq!(m.range_label, "2.2kHz");
     }
@@ -400,8 +341,8 @@ mod tests {
         let response =
             make_measurement_response(0x02, 0x01, b"-12.345", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mock = MockTransport::new(vec![response]);
-        let table = Box::new(Ut61ePlusTable::new());
-        let mut dmm = Dmm::new(mock, table);
+        let protocol = Box::new(Ut61PlusProtocol::new());
+        let mut dmm = Dmm::new(mock, protocol).unwrap();
 
         let m = dmm.request_measurement().unwrap();
         assert!(

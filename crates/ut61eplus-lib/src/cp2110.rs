@@ -87,7 +87,7 @@ impl Cp2110 {
             .get_feature_report(&mut buf)
             .map_err(Error::Hid)?;
         if n < 3 {
-            return Err(Error::InvalidResponse(format!(
+            return Err(Error::invalid_response_msg(format!(
                 "version info report too short: {n} bytes"
             )));
         }
@@ -114,7 +114,7 @@ impl Cp2110 {
             .get_feature_report(&mut buf)
             .map_err(Error::Hid)?;
         if n < 7 {
-            return Err(Error::InvalidResponse(format!(
+            return Err(Error::invalid_response_msg(format!(
                 "UART status report too short: {n} bytes"
             )));
         }
@@ -227,7 +227,7 @@ impl Transport for Cp2110 {
     fn write(&self, data: &[u8]) -> Result<()> {
         // CP2110 interrupt OUT: first byte is length, then payload (AN434 §6.1).
         if data.len() > MAX_REPORT_PAYLOAD {
-            return Err(Error::InvalidResponse(format!(
+            return Err(Error::invalid_response_msg(format!(
                 "data too large for single HID report: {} bytes (max {MAX_REPORT_PAYLOAD})",
                 data.len()
             )));

@@ -15,8 +15,8 @@ fn main() {
         Ok(m) => {
             println!("{m}");
             println!("  Mode:  {}", m.mode);
-            println!("  Range: {} ({})", m.range_label, m.range);
-            println!("  Raw:   {:?}", m.display_raw);
+            println!("  Range: {}", m.range_label);
+            println!("  Raw:   {:?}", m.display_raw.as_deref().unwrap_or(""));
             println!("  Flags: {}", m.flags);
         }
         Err(e) => {

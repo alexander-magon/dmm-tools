@@ -24,10 +24,10 @@ impl Sample {
         };
         Self {
             wall_time: Local::now(),
-            mode: m.mode.to_string(),
+            mode: m.mode.clone(),
             value_str,
-            unit: m.unit.to_string(),
-            range_label: m.range_label.to_string(),
+            unit: m.unit.clone(),
+            range_label: m.range_label.clone(),
             flags: m.flags.to_string(),
         }
     }
@@ -84,8 +84,7 @@ impl Default for Recording {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ut61eplus_lib::measurement::Measurement;
-    use ut61eplus_lib::tables::ut61e_plus::Ut61ePlusTable;
+    use ut61eplus_lib::protocol::ut61eplus::tables::ut61e_plus::Ut61ePlusTable;
 
     fn make_measurement(display: &[u8; 7]) -> Measurement {
         let payload: Vec<u8> = vec![
@@ -96,7 +95,7 @@ mod tests {
             0x30, 0x30, 0x30, // flags (with 0x30 prefix, all zero = AUTO on)
         ];
         let table = Ut61ePlusTable::new();
-        Measurement::parse(&payload, &table).unwrap()
+        ut61eplus_lib::protocol::ut61eplus::parse_measurement(&payload, &table).unwrap()
     }
 
     #[test]

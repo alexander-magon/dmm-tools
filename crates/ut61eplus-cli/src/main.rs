@@ -9,8 +9,8 @@ use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use ut61eplus_lib::command::Command;
 use ut61eplus_lib::measurement::MeasuredValue;
+use ut61eplus_lib::protocol::DeviceFamily;
 
 fn version_string() -> &'static str {
     let version = env!("CARGO_PKG_VERSION");
@@ -30,6 +30,10 @@ fn version_string() -> &'static str {
     after_help = "Set NO_COLOR=1 to disable colored output.\n\nHelp / GitHub: https://github.com/antoinecellerier/dmm-tools"
 )]
 struct Cli {
+    /// Device family to connect to
+    #[arg(long, default_value = "ut61eplus")]
+    device: String,
+
     #[command(subcommand)]
     command: Cmd,
 }
@@ -119,36 +123,48 @@ enum ButtonAction {
 }
 
 impl ButtonAction {
-    fn to_command(&self) -> Command {
+    fn to_command_name(&self) -> &'static str {
         match self {
-            ButtonAction::Hold => Command::Hold,
-            ButtonAction::MinMax => Command::MinMax,
-            ButtonAction::ExitMinMax => Command::ExitMinMax,
-            ButtonAction::Rel => Command::Rel,
-            ButtonAction::Range => Command::Range,
-            ButtonAction::Auto => Command::Auto,
-            ButtonAction::Select => Command::Select,
-            ButtonAction::Select2 => Command::Select2,
-            ButtonAction::Light => Command::Light,
-            ButtonAction::PeakMinMax => Command::PeakMinMax,
-            ButtonAction::ExitPeak => Command::ExitPeak,
+            ButtonAction::Hold => "hold",
+            ButtonAction::MinMax => "minmax",
+            ButtonAction::ExitMinMax => "exit_minmax",
+            ButtonAction::Rel => "rel",
+            ButtonAction::Range => "range",
+            ButtonAction::Auto => "auto",
+            ButtonAction::Select => "select",
+            ButtonAction::Select2 => "select2",
+            ButtonAction::Light => "light",
+            ButtonAction::PeakMinMax => "peak",
+            ButtonAction::ExitPeak => "exit_peak",
         }
     }
+}
+
+fn parse_device_family(s: &str) -> Result<DeviceFamily, String> {
+    s.parse::<DeviceFamily>()
 }
 
 fn main() {
     env_logger::init();
     let cli = Cli::parse();
 
+    let family = match parse_device_family(&cli.device) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("{} {e}", style("Error:").red().bold());
+            std::process::exit(1);
+        }
+    };
+
     let result = match cli.command {
         Cmd::List => cmd_list(),
-        Cmd::Info => cmd_info(),
+        Cmd::Info => cmd_info(family),
         Cmd::Read {
             interval_ms,
             format,
             output,
             count,
-        } => cmd_read(interval_ms, format, output, count),
+        } => cmd_read(family, interval_ms, format, output, count),
         Cmd::Completions { shell } => match shell {
             Some(shell) => {
                 clap_complete::generate(
@@ -167,8 +183,8 @@ fn main() {
                 Ok(())
             }
         },
-        Cmd::Command { action } => cmd_command(action),
-        Cmd::Debug { count, interval_ms } => cmd_debug(count, interval_ms),
+        Cmd::Command { action } => cmd_command(family, action),
+        Cmd::Debug { count, interval_ms } => cmd_debug(family, count, interval_ms),
         Cmd::Capture {
             output,
             steps,
@@ -178,7 +194,7 @@ fn main() {
                 capture::list_steps();
                 Ok(())
             } else {
-                open_with_help().and_then(|dmm| capture::cmd_capture(output, steps, dmm))
+                open_with_help(family).and_then(|dmm| capture::cmd_capture(output, steps, dmm))
             }
         }
     };
@@ -191,10 +207,30 @@ fn main() {
 }
 
 /// Open the meter with helpful error messages for common failures.
-fn open_with_help()
--> Result<ut61eplus_lib::Dmm<ut61eplus_lib::cp2110::Cp2110>, Box<dyn std::error::Error>> {
-    match ut61eplus_lib::open() {
-        Ok(dmm) => Ok(dmm),
+fn open_with_help(
+    family: DeviceFamily,
+) -> Result<ut61eplus_lib::Dmm<ut61eplus_lib::cp2110::Cp2110>, Box<dyn std::error::Error>> {
+    match ut61eplus_lib::open_device(family) {
+        Ok(dmm) => {
+            let profile = dmm.profile();
+            if profile.stability == ut61eplus_lib::protocol::Stability::Experimental {
+                eprintln!(
+                    "{}",
+                    style(format!(
+                        "WARNING: {} support is EXPERIMENTAL (unverified against real hardware).",
+                        profile.model_name
+                    ))
+                    .yellow()
+                    .bold()
+                );
+                eprintln!(
+                    "{}",
+                    style("Please report findings at https://github.com/antoinecellerier/dmm-tools/issues")
+                        .yellow()
+                );
+            }
+            Ok(dmm)
+        }
         Err(ut61eplus_lib::error::Error::DeviceNotFound { .. }) => {
             eprintln!("{}", style("USB adapter not found.").yellow().bold());
             eprintln!("Check that the CP2110 USB adapter is plugged in.");
@@ -251,10 +287,13 @@ fn cmd_list() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn cmd_info() -> Result<(), Box<dyn std::error::Error>> {
-    let mut dmm = open_with_help()?;
+fn cmd_info(family: DeviceFamily) -> Result<(), Box<dyn std::error::Error>> {
+    let mut dmm = open_with_help(family)?;
     let name = dmm.get_name()?;
-    println!("Device: {}", style(&name).bold());
+    match name {
+        Some(ref n) => println!("Device: {}", style(n).bold()),
+        None => println!("Device: {}", style("(name not supported)").dim()),
+    }
 
     match dmm.transport().version_info() {
         Ok(ver) => {
@@ -294,6 +333,7 @@ fn cmd_info() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn cmd_read(
+    family: DeviceFamily,
     interval_ms: u64,
     format: OutputFormat,
     output_path: Option<String>,
@@ -305,7 +345,7 @@ fn cmd_read(
         r.store(false, Ordering::SeqCst);
     })?;
 
-    let mut dmm = open_with_help()?;
+    let mut dmm = open_with_help(family)?;
     info!("connected, starting measurement loop");
 
     let mut writer: Box<dyn Write> = match &output_path {
@@ -383,22 +423,29 @@ impl ReadStats {
     }
 }
 
-fn cmd_command(action: ButtonAction) -> Result<(), Box<dyn std::error::Error>> {
-    let mut dmm = open_with_help()?;
-    let cmd = action.to_command();
-    dmm.send_command(cmd)?;
-    println!("{} {cmd:?}", style("Sent").green());
+fn cmd_command(
+    family: DeviceFamily,
+    action: ButtonAction,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut dmm = open_with_help(family)?;
+    let cmd_name = action.to_command_name();
+    dmm.send_command(cmd_name)?;
+    println!("{} {cmd_name}", style("Sent").green());
     Ok(())
 }
 
-fn cmd_debug(count: usize, interval_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_debug(
+    family: DeviceFamily,
+    count: usize,
+    interval_ms: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
     ctrlc::set_handler(move || {
         r.store(false, Ordering::SeqCst);
     })?;
 
-    let mut dmm = open_with_help()?;
+    let mut dmm = open_with_help(family)?;
 
     // Show CP2110 bridge info before entering measurement loop
     if let Ok(ver) = dmm.transport().version_info() {
@@ -427,14 +474,15 @@ fn cmd_debug(count: usize, interval_ms: u64) -> Result<(), Box<dyn std::error::E
     while running.load(Ordering::SeqCst) && (count == 0 || i < count) {
         match dmm.request_measurement() {
             Ok(m) => {
+                let display = m.display_raw.as_deref().unwrap_or("(none)");
                 println!(
-                    "{} mode={:02X} range={:02X} display={:?} progress={} flags={} \u{2192} {}",
+                    "{} mode_raw={:04X} display={:?} progress={:?} flags={} raw={:02X?} \u{2192} {}",
                     style(format!("[{i}]")).dim(),
-                    m.mode as u8,
-                    m.range,
-                    m.display_raw,
+                    m.mode_raw,
+                    display,
                     m.progress,
                     m.flags,
+                    m.raw_payload,
                     style(format!("{m}")).green(),
                 );
             }
@@ -459,7 +507,7 @@ fn cmd_debug(count: usize, interval_ms: u64) -> Result<(), Box<dyn std::error::E
 mod tests {
     use super::*;
     use ut61eplus_lib::measurement::Measurement;
-    use ut61eplus_lib::tables::ut61e_plus::Ut61ePlusTable;
+    use ut61eplus_lib::protocol::ut61eplus::tables::ut61e_plus::Ut61ePlusTable;
 
     /// Build a 14-byte payload and parse it into a Measurement.
     fn make_measurement(
@@ -486,7 +534,7 @@ mod tests {
             flags.2 | 0x30,
         ];
         let table = Ut61ePlusTable::new();
-        Measurement::parse(&payload, &table).unwrap()
+        ut61eplus_lib::protocol::ut61eplus::parse_measurement(&payload, &table).unwrap()
     }
 
     #[test]
@@ -569,6 +617,12 @@ mod tests {
     }
 
     #[test]
+    fn clap_parse_device_flag() {
+        let cli = Cli::try_parse_from(["ut61eplus", "--device", "ut8803", "list"]).unwrap();
+        assert_eq!(cli.device, "ut8803");
+    }
+
+    #[test]
     fn format_text_output() {
         let m = make_measurement(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mut buf = Vec::new();
@@ -584,7 +638,6 @@ mod tests {
         let mut buf = Vec::new();
         format::format_measurement(&mut buf, &m, &OutputFormat::Csv).unwrap();
         let output = String::from_utf8(buf).unwrap();
-        // CSV has: timestamp,mode,value,unit,range,flags
         let fields: Vec<&str> = output.trim().split(',').collect();
         assert!(fields.len() >= 6);
         assert_eq!(fields[1], "DC V");
@@ -660,7 +713,6 @@ mod tests {
 
     #[test]
     fn format_text_includes_flags() {
-        // flag1=0x0F (all), flag2=0x00 (AUTO on)
         let m = make_measurement(0x02, 0x00, b"  1.234", (0x00, 0x00), (0x0F, 0x00, 0x00));
         let mut buf = Vec::new();
         format::format_measurement(&mut buf, &m, &OutputFormat::Text).unwrap();
@@ -680,17 +732,17 @@ mod tests {
     }
 
     #[test]
-    fn button_action_to_command() {
-        assert_eq!(ButtonAction::Hold.to_command(), Command::Hold);
-        assert_eq!(ButtonAction::MinMax.to_command(), Command::MinMax);
-        assert_eq!(ButtonAction::ExitMinMax.to_command(), Command::ExitMinMax);
-        assert_eq!(ButtonAction::Rel.to_command(), Command::Rel);
-        assert_eq!(ButtonAction::Range.to_command(), Command::Range);
-        assert_eq!(ButtonAction::Auto.to_command(), Command::Auto);
-        assert_eq!(ButtonAction::Select.to_command(), Command::Select);
-        assert_eq!(ButtonAction::Select2.to_command(), Command::Select2);
-        assert_eq!(ButtonAction::Light.to_command(), Command::Light);
-        assert_eq!(ButtonAction::PeakMinMax.to_command(), Command::PeakMinMax);
-        assert_eq!(ButtonAction::ExitPeak.to_command(), Command::ExitPeak);
+    fn button_action_to_command_name() {
+        assert_eq!(ButtonAction::Hold.to_command_name(), "hold");
+        assert_eq!(ButtonAction::MinMax.to_command_name(), "minmax");
+        assert_eq!(ButtonAction::ExitMinMax.to_command_name(), "exit_minmax");
+        assert_eq!(ButtonAction::Rel.to_command_name(), "rel");
+        assert_eq!(ButtonAction::Range.to_command_name(), "range");
+        assert_eq!(ButtonAction::Auto.to_command_name(), "auto");
+        assert_eq!(ButtonAction::Select.to_command_name(), "select");
+        assert_eq!(ButtonAction::Select2.to_command_name(), "select2");
+        assert_eq!(ButtonAction::Light.to_command_name(), "light");
+        assert_eq!(ButtonAction::PeakMinMax.to_command_name(), "peak");
+        assert_eq!(ButtonAction::ExitPeak.to_command_name(), "exit_peak");
     }
 }

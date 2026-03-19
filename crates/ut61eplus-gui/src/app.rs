@@ -2,7 +2,6 @@ use eframe::egui::{self, Color32, RichText, Ui};
 use log::{error, info, warn};
 use std::sync::mpsc;
 use std::time::Instant;
-use ut61eplus_lib::command::Command;
 use ut61eplus_lib::measurement::{MeasuredValue, Measurement};
 
 use crate::display;
@@ -48,7 +47,7 @@ pub struct App {
 
     rx: Option<mpsc::Receiver<DmmMessage>>,
     stop_tx: Option<mpsc::Sender<()>>,
-    cmd_tx: Option<mpsc::Sender<Command>>,
+    cmd_tx: Option<mpsc::Sender<String>>,
     first_frame: bool,
     /// OS default pixels_per_point, captured on first frame.
     os_ppp: Option<f32>,
@@ -175,7 +174,7 @@ impl App {
 
         let (msg_tx, msg_rx) = mpsc::channel();
         let (stop_tx, stop_rx) = mpsc::channel();
-        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>();
+        let (cmd_tx, cmd_rx) = mpsc::channel::<String>();
         self.rx = Some(msg_rx);
         self.stop_tx = Some(stop_tx);
         self.cmd_tx = Some(cmd_tx);
@@ -192,7 +191,7 @@ impl App {
                 let mut dmm = match ut61eplus_lib::open() {
                     Ok(mut d) => {
                         let name = if query_name {
-                            d.get_name().unwrap_or_default()
+                            d.get_name().ok().flatten().unwrap_or_default()
                         } else {
                             String::new()
                         };
@@ -216,7 +215,7 @@ impl App {
 
                     // Process any pending remote commands
                     while let Ok(cmd) = cmd_rx.try_recv() {
-                        if let Err(e) = dmm.send_command(cmd) {
+                        if let Err(e) = dmm.send_command(&cmd) {
                             warn!("background thread: command failed: {e}");
                         }
                     }
@@ -256,7 +255,7 @@ impl App {
                                 match ut61eplus_lib::open() {
                                     Ok(mut d) => {
                                         let name = if query_name {
-                                            d.get_name().unwrap_or_default()
+                                            d.get_name().ok().flatten().unwrap_or_default()
                                         } else {
                                             String::new()
                                         };
@@ -336,7 +335,7 @@ impl App {
                         continue;
                     }
                     if let MeasuredValue::Normal(v) = &m.value {
-                        self.graph.push(*v, &m.mode.to_string(), m.unit);
+                        self.graph.push(*v, &m.mode, &m.unit);
                         self.stats.push(*v);
                     }
 
@@ -363,9 +362,9 @@ impl App {
         }
     }
 
-    fn send_command(&self, cmd: Command) {
+    fn send_command(&self, cmd: &str) {
         if let Some(tx) = &self.cmd_tx {
-            let _ = tx.send(cmd);
+            let _ = tx.send(cmd.to_string());
         }
     }
 
@@ -395,12 +394,12 @@ impl App {
             let peak = flags.is_some_and(|f| f.peak_min || f.peak_max);
 
             for &(label, active, cmd) in &[
-                ("HOLD", hold, Command::Hold),
-                ("REL", rel, Command::Rel),
-                ("RANGE", manual_range, Command::Range),
-                ("AUTO", auto, Command::Auto),
-                ("MIN/MAX", min_max, Command::MinMax),
-                ("PEAK", peak, Command::PeakMinMax),
+                ("HOLD", hold, "hold"),
+                ("REL", rel, "rel"),
+                ("RANGE", manual_range, "range"),
+                ("AUTO", auto, "auto"),
+                ("MIN/MAX", min_max, "minmax"),
+                ("PEAK", peak, "peak"),
             ] {
                 let text = if active {
                     RichText::new(label)
@@ -421,7 +420,7 @@ impl App {
                 ))
                 .clicked()
             {
-                self.send_command(Command::Select);
+                self.send_command("select");
             }
 
             if ui
@@ -430,7 +429,7 @@ impl App {
                 ))
                 .clicked()
             {
-                self.send_command(Command::Light);
+                self.send_command("light");
             }
         });
     }
@@ -718,7 +717,11 @@ impl App {
     }
 
     fn show_stats_section(&mut self, ui: &mut Ui, compact: bool, scale: f32) {
-        let unit = self.last_measurement.as_ref().map(|m| m.unit).unwrap_or("");
+        let unit = self
+            .last_measurement
+            .as_ref()
+            .map(|m| m.unit.as_str())
+            .unwrap_or("");
         let main_font = 12.0 * scale;
         let sub_font = 11.0 * scale;
 

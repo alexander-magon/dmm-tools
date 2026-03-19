@@ -1,7 +1,7 @@
 //! Send the GetName command and print the raw response.
 
-use ut61eplus_lib::command::Command;
 use ut61eplus_lib::cp2110::{Cp2110, PID, VID};
+use ut61eplus_lib::protocol::ut61eplus::command::Command;
 use ut61eplus_lib::transport::Transport;
 
 fn main() {

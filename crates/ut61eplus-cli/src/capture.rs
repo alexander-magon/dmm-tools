@@ -2,7 +2,6 @@ use console::style;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::time::Duration;
-use ut61eplus_lib::command::Command;
 use ut61eplus_lib::measurement::{MeasuredValue, Measurement};
 
 // --- Data types ---
@@ -86,14 +85,14 @@ impl SampleData {
             .join(" ");
         Self {
             raw_hex,
-            mode_byte: format!("{:#04x}", m.mode as u8),
-            mode: m.mode.to_string(),
-            range_byte: format!("{:#04x}", m.range),
-            display_raw: m.display_raw.clone(),
+            mode_byte: format!("{:#04x}", m.mode_raw),
+            mode: m.mode.clone(),
+            range_byte: String::new(),
+            display_raw: m.display_raw.clone().unwrap_or_default(),
             value,
-            unit: m.unit.to_string(),
-            range_label: m.range_label.to_string(),
-            progress: m.progress,
+            unit: m.unit.clone(),
+            range_label: m.range_label.clone(),
+            progress: m.progress.unwrap_or(0),
             flags: SampleFlags {
                 hold: m.flags.hold,
                 rel: m.flags.rel,
@@ -140,7 +139,7 @@ impl SampleData {
 pub struct CaptureStep {
     pub id: &'static str,
     pub instruction: &'static str,
-    pub command: Option<Command>,
+    pub command: Option<&'static str>,
     pub samples: usize,
 }
 
@@ -284,49 +283,49 @@ pub fn all_capture_steps() -> Vec<CaptureStep> {
         CaptureStep {
             id: "hold",
             instruction: "Sending HOLD command.",
-            command: Some(Command::Hold),
+            command: Some("hold"),
             samples: 3,
         },
         CaptureStep {
             id: "hold_off",
             instruction: "Toggling HOLD off.",
-            command: Some(Command::Hold),
+            command: Some("hold"),
             samples: 3,
         },
         CaptureStep {
             id: "rel",
             instruction: "Sending REL command.",
-            command: Some(Command::Rel),
+            command: Some("rel"),
             samples: 3,
         },
         CaptureStep {
             id: "rel_off",
             instruction: "Toggling REL off.",
-            command: Some(Command::Rel),
+            command: Some("rel"),
             samples: 3,
         },
         CaptureStep {
             id: "minmax",
             instruction: "Sending MIN/MAX command.",
-            command: Some(Command::MinMax),
+            command: Some("minmax"),
             samples: 3,
         },
         CaptureStep {
             id: "minmax_off",
             instruction: "Exiting MIN/MAX.",
-            command: Some(Command::ExitMinMax),
+            command: Some("exit_minmax"),
             samples: 3,
         },
         CaptureStep {
             id: "range",
             instruction: "Sending RANGE (manual range).",
-            command: Some(Command::Range),
+            command: Some("range"),
             samples: 3,
         },
         CaptureStep {
             id: "auto",
             instruction: "Sending AUTO (restore auto-range).",
-            command: Some(Command::Auto),
+            command: Some("auto"),
             samples: 3,
         },
         // Part 3: Range cycle
@@ -573,8 +572,8 @@ mod tests {
             flags.1 | 0x30,
             flags.2 | 0x30,
         ];
-        let table = ut61eplus_lib::tables::ut61e_plus::Ut61ePlusTable::new();
-        Measurement::parse(&payload, &table).unwrap()
+        let table = ut61eplus_lib::protocol::ut61eplus::tables::ut61e_plus::Ut61ePlusTable::new();
+        ut61eplus_lib::protocol::ut61eplus::parse_measurement(&payload, &table).unwrap()
     }
 
     #[test]
@@ -583,7 +582,6 @@ mod tests {
         let s = SampleData::from_measurement(&m);
         assert_eq!(s.mode_byte, "0x02");
         assert_eq!(s.mode, "DC V");
-        assert_eq!(s.range_byte, "0x01");
         assert_eq!(s.unit, "V");
         assert_eq!(s.range_label, "22V");
         assert_eq!(s.value, "5.678");
@@ -902,9 +900,9 @@ pub fn cmd_capture(
     // Verify the meter is actually responding before proceeding
     eprintln!("{}", style("Checking meter communication...").dim());
     let device_name = match dmm.get_name() {
-        Ok(name) => name,
-        Err(_) => {
-            // get_name failed — try a plain measurement as fallback
+        Ok(Some(name)) => name,
+        Ok(None) | Err(_) => {
+            // get_name failed or unsupported — try a plain measurement as fallback
             match dmm.request_measurement() {
                 Ok(_) => "unknown".to_string(),
                 Err(_) => {
@@ -1096,12 +1094,12 @@ pub fn cmd_capture(
             style("Any key to start, q=skip to end:").dim()
         ))?;
         if ch != 'q' && ch != 'Q' {
-            let _ = dmm.send_command(Command::Auto);
+            let _ = dmm.send_command("auto");
             std::thread::sleep(Duration::from_millis(200));
 
             let mut range_samples = Vec::new();
             for r in 0..6 {
-                let _ = dmm.send_command(Command::Range);
+                let _ = dmm.send_command("range");
                 std::thread::sleep(Duration::from_millis(300));
                 let raw = capture_samples(&mut dmm, 2);
                 for m in &raw {
@@ -1113,7 +1111,7 @@ pub fn cmd_capture(
                     range_samples.push(s);
                 }
             }
-            let _ = dmm.send_command(Command::Auto);
+            let _ = dmm.send_command("auto");
             std::thread::sleep(Duration::from_millis(200));
 
             upsert_step(

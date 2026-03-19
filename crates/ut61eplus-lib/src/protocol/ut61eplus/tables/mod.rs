@@ -1,6 +1,6 @@
 pub mod ut61e_plus;
 
-use crate::mode::Mode;
+use super::mode::Mode;
 
 /// Information about a specific measurement range.
 #[derive(Debug, Clone)]
@@ -12,7 +12,7 @@ pub struct RangeInfo {
 }
 
 /// Trait for device-specific range/unit lookup tables.
-pub trait DeviceTable {
+pub trait DeviceTable: Send {
     fn range_info(&self, mode: Mode, range: u8) -> Option<&RangeInfo>;
     fn model_name(&self) -> &'static str;
 }
