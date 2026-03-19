@@ -657,7 +657,7 @@ impl App {
             }
         });
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Sample interval:");
             let mut changed = false;
             for &ms in &[0u32, 100, 200, 300, 500, 1000, 2000] {
@@ -680,7 +680,7 @@ impl App {
             );
         });
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Zoom:");
             let mut changed = false;
             for &level in Self::ZOOM_LEVELS {
@@ -719,7 +719,7 @@ impl App {
         let vis = self.graph.visible_stats();
 
         if compact {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(
                     RichText::new(format!(
                         "Min:{}  Max:{}  Avg:{}  ({})",

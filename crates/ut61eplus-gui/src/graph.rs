@@ -295,9 +295,12 @@ impl Graph {
         gaps
     }
 
-    /// Render toolbar (time window buttons + live toggle + Y-axis controls).
+    /// Render toolbar as two rows. Row 1: time presets, LIVE, Y-axis.
+    /// Row 2: overlay toggles (Mean, Min/Max, Ref, Cursors).
+    /// Both use `horizontal_wrapped` so items wrap instead of clipping.
     pub fn show_toolbar(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
+        // Row 1: time windows + LIVE + Y-axis
+        ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
 
             for &(secs, label) in TIME_WINDOWS {
@@ -309,11 +312,10 @@ impl Graph {
                 }
             }
 
-            ui.separator();
+            ui.add_space(6.0);
 
-            let dark = ui.visuals().dark_mode;
             let live_color = if self.live {
-                if dark {
+                if ui.visuals().dark_mode {
                     egui::Color32::from_rgb(60, 180, 75)
                 } else {
                     egui::Color32::from_rgb(0, 130, 30)
@@ -330,9 +332,8 @@ impl Graph {
                 self.live = !self.live;
             }
 
-            ui.separator();
+            ui.add_space(6.0);
 
-            // Y-axis mode toggle
             let y_label = if self.y_axis_fixed {
                 "Y:Fixed"
             } else {
@@ -340,7 +341,6 @@ impl Graph {
             };
             if ui.selectable_label(self.y_axis_fixed, y_label).clicked() {
                 if !self.y_axis_fixed && !self.y_user_set {
-                    // Switching to fixed: snapshot current auto-scaled range
                     let (view_min, view_max) = self.view_bounds();
                     if let Some((y_lo, y_hi)) = self.y_range_for_view_auto(view_min, view_max) {
                         self.y_fixed_min = y_lo;
@@ -351,12 +351,12 @@ impl Graph {
                 }
                 self.y_axis_fixed = !self.y_axis_fixed;
             }
-
             if self.y_axis_fixed {
                 let field_width = 50.0;
                 let changed_min = ui
                     .add(
-                        egui::TextEdit::singleline(&mut self.y_min_text).desired_width(field_width),
+                        egui::TextEdit::singleline(&mut self.y_min_text)
+                            .desired_width(field_width),
                     )
                     .changed();
                 ui.label(
@@ -366,10 +366,10 @@ impl Graph {
                 );
                 let changed_max = ui
                     .add(
-                        egui::TextEdit::singleline(&mut self.y_max_text).desired_width(field_width),
+                        egui::TextEdit::singleline(&mut self.y_max_text)
+                            .desired_width(field_width),
                     )
                     .changed();
-
                 if changed_min && let Ok(v) = self.y_min_text.parse::<f64>() {
                     self.y_fixed_min = v;
                     self.y_user_set = true;
@@ -379,8 +379,12 @@ impl Graph {
                     self.y_user_set = true;
                 }
             }
+        });
 
-            ui.separator();
+        // Row 2: overlay toggles
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let dark = ui.visuals().dark_mode;
 
             if ui.selectable_label(self.show_mean, "Mean").clicked() {
                 self.show_mean = !self.show_mean;
@@ -407,13 +411,14 @@ impl Graph {
                         .color(ui.visuals().weak_text_color()),
                 );
             }
-
             if ui.selectable_label(self.show_ref_line, "Ref").clicked() {
                 self.show_ref_line = !self.show_ref_line;
             }
             if self.show_ref_line {
                 let changed = ui
-                    .add(egui::TextEdit::singleline(&mut self.ref_line_text).desired_width(80.0))
+                    .add(
+                        egui::TextEdit::singleline(&mut self.ref_line_text).desired_width(80.0),
+                    )
                     .changed();
                 if changed {
                     self.ref_line_values = self
@@ -429,7 +434,6 @@ impl Graph {
                     self.show_crossings = !self.show_crossings;
                 }
             }
-
             if ui
                 .selectable_label(self.cursors_active, "Cursors")
                 .clicked()
@@ -451,7 +455,6 @@ impl Graph {
                         _ => "---".to_string(),
                     };
                     let unit = &self.current_unit;
-                    let dark = ui.visuals().dark_mode;
                     let delta_color = if dark {
                         egui::Color32::from_rgb(255, 180, 100)
                     } else {
@@ -747,17 +750,20 @@ impl Graph {
             }
         });
 
-        // Draw overlay labels using the painter + transform
-        let painter = ui.painter_at(response.response.rect);
+        // Draw overlay labels using the painter (unclipped, so labels aren't cut off at edges)
+        let painter = ui.painter();
         let label_font = egui::FontId::proportional(12.0);
+        let plot_rect = response.response.rect;
 
-        // Mean line label
+        // Mean line label — anchored to right edge of plot rect
         if show_mean && let Some(avg) = mean_value {
-            let pos = response
+            let y_pos = response
                 .transform
-                .position_from_point(&egui_plot::PlotPoint::new(view_max, avg));
+                .position_from_point(&egui_plot::PlotPoint::new(view_max, avg))
+                .y
+                .clamp(plot_rect.top() + 12.0, plot_rect.bottom() - 2.0);
             painter.text(
-                egui::pos2(pos.x - 4.0, pos.y - 2.0),
+                egui::pos2(plot_rect.right() - 4.0, y_pos - 2.0),
                 egui::Align2::RIGHT_BOTTOM,
                 format!("Mean: {avg:.4} {overlay_unit}"),
                 label_font.clone(),
@@ -768,11 +774,13 @@ impl Graph {
         // Reference line labels
         if show_ref {
             for &v in &ref_values {
-                let pos = response
+                let y_pos = response
                     .transform
-                    .position_from_point(&egui_plot::PlotPoint::new(view_max, v));
+                    .position_from_point(&egui_plot::PlotPoint::new(view_max, v))
+                    .y
+                    .clamp(plot_rect.top() + 12.0, plot_rect.bottom() - 2.0);
                 painter.text(
-                    egui::pos2(pos.x - 4.0, pos.y - 2.0),
+                    egui::pos2(plot_rect.right() - 4.0, y_pos - 2.0),
                     egui::Align2::RIGHT_BOTTOM,
                     format!("{v:.4} {overlay_unit}"),
                     label_font.clone(),
