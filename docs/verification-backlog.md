@@ -25,7 +25,7 @@ Items that need real components or specific setups to verify.
 - **SELECT2 (0x49):** Received by meter (beeps) but no visible effect on DC V mode. Likely needs AC V mode for Hz/duty cycle display.
 - **Peak MIN/MAX (0x4D):** Received by meter (beeps) but no visible effect on DC V mode. May need active signal or specific mode.
 - **Exit Peak (0x4E):** Sent but not confirmed — need to first activate peak mode.
-- **Get Name (0x5F):** Not tested — need to parse response format.
+- **Get Name (0x5F):** Verified — returns two frames: ack (FF 00) then ASCII name (e.g. "UT61E+").
 
 ### Range tables
 - Range byte values for each mode need verification against real device at each range.
@@ -70,5 +70,7 @@ These collisions need further investigation. The reference implementations don't
 | Remote AUTO | 0x47 | Verified |
 | Remote SELECT | 0x4C | Verified (cycles DC V → AC+DC) |
 | Remote LIGHT | 0x4B | Verified |
+| Get Name | 0x5F | Verified (two-frame response: ack FF 00 + ASCII name) |
+| Command ack frames | — | Verified (2-byte payload after commands, skipped in measurement path) |
 | Frame format | len includes checksum | Verified (19 bytes total) |
 | Checksum | 16-bit BE sum | Verified |
