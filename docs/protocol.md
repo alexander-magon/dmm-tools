@@ -14,10 +14,13 @@ The UT61E+ uses a Silicon Labs CP2110 chip as a USB HID-to-UART bridge.
 Three HID feature reports must be sent to initialize the UART:
 
 1. **Enable UART:** `[0x41, 0x01]`
-2. **Configure 9600/8N1:** `[0x50, 0x00, 0x00, 0x25, 0x80, 0x00, 0x00, 0x03, 0x00, 0x00]`
-   - Bytes 2-3: baud rate = `0x00002580` = 9600
-   - Byte 7: `0x03` = 8 data bits, no parity, 1 stop bit
-3. **Purge FIFOs:** `[0x43, 0x02]` (purge both TX and RX)
+2. **Configure 9600/8N1:** `[0x50, 0x00, 0x00, 0x25, 0x80, 0x00, 0x00, 0x03, 0x00]`
+   - Bytes 1-4: baud rate = `0x00002580` = 9600 (big-endian)
+   - Byte 5: `0x00` = no parity
+   - Byte 6: `0x00` = no flow control
+   - Byte 7: `0x03` = 8 data bits
+   - Byte 8: `0x00` = short stop bit (1 stop bit)
+3. **Purge RX FIFO:** `[0x43, 0x02]` (0x01=TX only, 0x02=RX only, 0x03=both — we purge RX only since TX is empty at init)
 
 ### Interrupt Transfers
 
@@ -207,8 +210,42 @@ The configured delay adds on top of the ~100ms wire round-trip time.
 - **AUTO flag has inverted logic:** Flag byte 12 bit 2 clear = auto-range ON.
 - **SELECT2 and Peak commands are context-dependent:** They beep (acknowledged) but only produce visible effects in specific modes (e.g., SELECT2 on AC V for frequency display).
 
+## CP2110 Diagnostic Reports
+
+These are CP2110 HID feature reports (not meter protocol), documented in AN434.
+
+### Get Version Information (report 0x46)
+
+Direction: Get (device → host). Returns 2 data bytes:
+
+| Offset | Size | Description |
+|--------|------|-------------|
+| 1 | 1 | Part number (0x0A for CP2110) |
+| 2 | 1 | Device firmware version |
+
+### Get UART Status (report 0x42)
+
+Direction: Get (device → host). Returns 6 data bytes:
+
+| Offset | Size | Description |
+|--------|------|-------------|
+| 1-2 | 2 | TX FIFO byte count (LE, max 480) |
+| 3-4 | 2 | RX FIFO byte count (LE, max 480) |
+| 5 | 1 | Error Status (bit 0 = parity, bit 1 = overrun) |
+| 6 | 1 | Break Status (0x00 = inactive, 0x01 = active) |
+
+Reading this report clears the error flags. Useful for detecting overrun errors that would otherwise only manifest as checksum failures in the meter protocol.
+
+### Set Reset Device (report 0x40)
+
+Direction: Set (host → device). Payload: `[0x40, 0x00]`.
+
+Resets the CP2110 and re-enumerates on USB. All UART config is lost — must re-initialize after re-opening.
+
+**UT61E+ note:** This report is rejected with a HID protocol error on the UT61E+'s CP2110. UNI-T likely locked this report out in the device's HID descriptor.
+
 ## References
 
 - [ljakob/unit_ut61eplus](https://github.com/ljakob/unit_ut61eplus) — Python implementation
 - [mwuertinger/ut61ep](https://github.com/mwuertinger/ut61ep) — Go implementation
-- [Silicon Labs AN433](https://www.silabs.com/documents/public/application-notes/AN433-CP2110-4-Interface-Specification.pdf) — CP2110/4 HID-to-UART interface specification
+- [Silicon Labs AN434](https://www.silabs.com/documents/public/application-notes/an434-cp2110-4-interface-specification.pdf) — CP2110/4 HID-to-UART interface specification

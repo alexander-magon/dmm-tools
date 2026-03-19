@@ -254,7 +254,42 @@ fn cmd_list() -> Result<(), Box<dyn std::error::Error>> {
 fn cmd_info() -> Result<(), Box<dyn std::error::Error>> {
     let mut dmm = open_with_help()?;
     let name = dmm.get_name()?;
-    println!("Device: {}", style(name).bold());
+    println!("Device: {}", style(&name).bold());
+
+    match dmm.transport().version_info() {
+        Ok(ver) => {
+            println!(
+                "CP2110: part={:#04x} firmware={}",
+                ver.part_number, ver.device_version
+            );
+        }
+        Err(e) => {
+            eprintln!(
+                "{} failed to read CP2110 version: {e}",
+                style("Warning:").yellow()
+            );
+        }
+    }
+
+    match dmm.transport().uart_status() {
+        Ok(status) => {
+            if status.parity_error || status.overrun_error {
+                eprintln!(
+                    "{} UART errors: parity={} overrun={}",
+                    style("Warning:").yellow(),
+                    status.parity_error,
+                    status.overrun_error,
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "{} failed to read UART status: {e}",
+                style("Warning:").yellow()
+            );
+        }
+    }
+
     Ok(())
 }
 
@@ -364,6 +399,28 @@ fn cmd_debug(count: usize, interval_ms: u64) -> Result<(), Box<dyn std::error::E
     })?;
 
     let mut dmm = open_with_help()?;
+
+    // Show CP2110 bridge info before entering measurement loop
+    if let Ok(ver) = dmm.transport().version_info() {
+        eprintln!(
+            "{} CP2110 part={:#04x} firmware={}",
+            style("bridge:").dim(),
+            ver.part_number,
+            ver.device_version,
+        );
+    }
+    if let Ok(status) = dmm.transport().uart_status() {
+        eprintln!(
+            "{} TX FIFO={} RX FIFO={} errors: parity={} overrun={} break={}",
+            style("uart:").dim(),
+            status.tx_fifo,
+            status.rx_fifo,
+            status.parity_error,
+            status.overrun_error,
+            status.line_break,
+        );
+    }
+
     let interval = Duration::from_millis(interval_ms);
     let mut i = 0;
 

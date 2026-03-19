@@ -12,6 +12,10 @@ pub struct CaptureReport {
     pub date: String,
     pub tool_version: String,
     pub device_name: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub cp2110_part: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub cp2110_firmware: Option<u8>,
     pub supported: bool,
     pub steps: Vec<StepResult>,
 }
@@ -703,6 +707,10 @@ pub fn cmd_capture(
     report.date = chrono::Local::now().to_rfc3339();
     report.tool_version = format!("{} ({})", env!("CARGO_PKG_VERSION"), env!("GIT_HASH"));
     report.device_name = device_name;
+    if let Ok(ver) = dmm.transport().version_info() {
+        report.cp2110_part = Some(format!("{:#04x}", ver.part_number));
+        report.cp2110_firmware = Some(ver.device_version);
+    }
     report.supported = supported;
 
     let all_steps = all_capture_steps();

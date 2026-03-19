@@ -33,6 +33,11 @@ impl<T: Transport> Dmm<T> {
         }
     }
 
+    /// Access the underlying transport (e.g. for CP2110-specific queries).
+    pub fn transport(&self) -> &T {
+        &self.transport
+    }
+
     /// Request a single measurement from the meter.
     pub fn request_measurement(&mut self) -> Result<Measurement> {
         let cmd = Command::GetMeasurement.encode();

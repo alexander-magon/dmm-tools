@@ -43,7 +43,8 @@ prints troubleshooting hints (udev rules on Linux, driver install on Windows).
 
 ### ut61eplus info
 
-Connect to the meter and print device info (model name).
+Connect to the meter and print device info: model name, CP2110 bridge firmware
+version, and any UART error flags.
 
 ```
 ut61eplus info
@@ -110,8 +111,8 @@ ut61eplus command hold
 
 ### ut61eplus debug
 
-Raw hex dump mode for protocol debugging. Shows decoded fields alongside the
-parsed measurement.
+Raw hex dump mode for protocol debugging. Prints CP2110 bridge version and UART
+status on startup, then shows decoded fields alongside each parsed measurement.
 
 ```
 ut61eplus debug [OPTIONS]

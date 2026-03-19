@@ -21,6 +21,9 @@ Items that need real components or specific setups to verify.
 - **LoZ V (0x15):** Low impedance ACV (UT61D+ feature, may not apply to E+).
 - **Inrush (0x1E):** Inrush current mode.
 
+### CP2110 feature reports (AN434)
+- (none pending)
+
 ### Commands not fully verified
 - **SELECT2 (0x49):** Received by meter (beeps) but no visible effect on DC V mode. Likely needs AC V mode for Hz/duty cycle display.
 - **Peak MIN/MAX (0x4D):** Received by meter (beeps) but no visible effect on DC V mode. May need active signal or specific mode.
@@ -74,3 +77,7 @@ These collisions need further investigation. The reference implementations don't
 | Command ack frames | — | Verified (2-byte payload after commands, skipped in measurement path) |
 | Frame format | len includes checksum | Verified (19 bytes total) |
 | Checksum | 16-bit BE sum | Verified |
+| CP2110 Get Version Info | report 0x46 | Verified (part=0x0A, firmware=1) |
+| CP2110 Get UART Status | report 0x42 | Verified (TX/RX FIFO=0, no errors at idle) |
+| CP2110 UART Config 9 bytes | report 0x50 | Verified (removed trailing 0x00, meter responds normally) |
+| CP2110 Set Reset Device | report 0x40 | Rejected — HID protocol error, likely locked out by UNI-T |

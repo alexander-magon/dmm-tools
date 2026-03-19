@@ -8,6 +8,33 @@ pub const VID: u16 = 0x10C4;
 /// UT61E+ PID (CP2110 HID-to-UART bridge).
 pub const PID: u16 = 0xEA80;
 
+/// Maximum payload size for a single CP2110 HID interrupt report (AN434 §6.1).
+const MAX_REPORT_PAYLOAD: usize = 63;
+
+/// CP2110 UART status from report 0x42 (AN434 §5.3).
+#[derive(Debug, Clone)]
+pub struct UartStatus {
+    /// Bytes waiting in the transmit FIFO (max 480).
+    pub tx_fifo: u16,
+    /// Bytes waiting in the receive FIFO (max 480).
+    pub rx_fifo: u16,
+    /// Parity error detected since last status read.
+    pub parity_error: bool,
+    /// Overrun error detected since last status read.
+    pub overrun_error: bool,
+    /// Line break is currently active.
+    pub line_break: bool,
+}
+
+/// CP2110 version information from report 0x46 (AN434 §5.7).
+#[derive(Debug, Clone)]
+pub struct VersionInfo {
+    /// Part number (0x0A for CP2110).
+    pub part_number: u8,
+    /// Device firmware version.
+    pub device_version: u8,
+}
+
 /// CP2110 HID transport wrapping a `HidDevice`.
 pub struct Cp2110 {
     device: HidDevice,
@@ -20,17 +47,19 @@ impl Cp2110 {
     }
 
     /// Send the three feature reports to initialize the UART bridge:
-    /// 1. Enable UART
-    /// 2. Configure 9600 baud, 8N1
-    /// 3. Purge FIFOs
+    /// 1. Enable UART (report 0x41)
+    /// 2. Configure 9600 baud, 8N1 (report 0x50)
+    /// 3. Purge receive FIFO (report 0x43)
     pub fn init_uart(&self) -> Result<()> {
         debug!("CP2110: enabling UART");
         self.send_feature_report(&[0x41, 0x01])?;
 
+        // Report 0x50 (AN434 §6.3): baud rate (4 bytes BE) + parity + flow ctl + data bits + stop bits
         debug!("CP2110: configuring 9600/8N1");
-        self.send_feature_report(&[0x50, 0x00, 0x00, 0x25, 0x80, 0x00, 0x00, 0x03, 0x00, 0x00])?;
+        self.send_feature_report(&[0x50, 0x00, 0x00, 0x25, 0x80, 0x00, 0x00, 0x03, 0x00])?;
 
-        debug!("CP2110: purging FIFOs");
+        // 0x02 = purge receive FIFO only (TX is empty at init time)
+        debug!("CP2110: purging RX FIFO");
         self.send_feature_report(&[0x43, 0x02])?;
 
         Ok(())
@@ -46,17 +75,91 @@ impl Cp2110 {
         // HidDevice doesn't expose path after open, return placeholder
         String::from("<connected>")
     }
+
+    /// Query CP2110 version information (report 0x46, AN434 §5.7).
+    ///
+    /// Returns the part number (0x0A for CP2110) and device firmware version.
+    pub fn version_info(&self) -> Result<VersionInfo> {
+        let mut buf = [0u8; 3];
+        buf[0] = 0x46; // Get Version Information report ID
+        let n = self
+            .device
+            .get_feature_report(&mut buf)
+            .map_err(Error::Hid)?;
+        if n < 3 {
+            return Err(Error::InvalidResponse(format!(
+                "version info report too short: {n} bytes"
+            )));
+        }
+        let info = VersionInfo {
+            part_number: buf[1],
+            device_version: buf[2],
+        };
+        debug!(
+            "CP2110: part={:#04x} version={}",
+            info.part_number, info.device_version
+        );
+        Ok(info)
+    }
+
+    /// Query CP2110 UART status (report 0x42, AN434 §5.3).
+    ///
+    /// Returns FIFO levels, error flags, and line break status.
+    /// Note: reading this report clears the error flags.
+    pub fn uart_status(&self) -> Result<UartStatus> {
+        let mut buf = [0u8; 7];
+        buf[0] = 0x42; // Get UART Status report ID
+        let n = self
+            .device
+            .get_feature_report(&mut buf)
+            .map_err(Error::Hid)?;
+        if n < 7 {
+            return Err(Error::InvalidResponse(format!(
+                "UART status report too short: {n} bytes"
+            )));
+        }
+        // TX/RX FIFO counts are 16-bit little-endian (AN434 §3.2 default byte order)
+        let tx_fifo = u16::from_le_bytes([buf[1], buf[2]]);
+        let rx_fifo = u16::from_le_bytes([buf[3], buf[4]]);
+        // Error Status: bit 0 = parity error, bit 1 = overrun error
+        let error_status = buf[5];
+        Ok(UartStatus {
+            tx_fifo,
+            rx_fifo,
+            parity_error: error_status & 0x01 != 0,
+            overrun_error: error_status & 0x02 != 0,
+            line_break: buf[6] != 0,
+        })
+    }
+
+    /// Reset the CP2110 device (report 0x40, AN434 §5.1).
+    ///
+    /// The device will re-enumerate on the USB bus and all UART configuration
+    /// is reset to defaults. The HID handle becomes invalid after this call —
+    /// the caller must re-open and re-initialize.
+    ///
+    /// **Note:** The UT61E+'s CP2110 rejects this report (HID protocol error),
+    /// likely because UNI-T locked it out in the device's HID descriptor.
+    /// This method is provided for completeness but will return `Err` on
+    /// UT61E+ hardware.
+    pub fn reset(&self) -> Result<()> {
+        debug!("CP2110: resetting device");
+        self.device
+            .send_feature_report(&[0x40, 0x00])
+            .map_err(Error::Hid)?;
+        Ok(())
+    }
 }
 
 impl Transport for Cp2110 {
     fn write(&self, data: &[u8]) -> Result<()> {
-        // CP2110 interrupt OUT: first byte is length, then payload.
-        // Max payload for a single HID interrupt report is 63 bytes.
-        debug_assert!(
-            data.len() <= 63,
-            "data too large for single HID report: {}",
-            data.len()
-        );
+        // CP2110 interrupt OUT: first byte is length, then payload (AN434 §6.1).
+        if data.len() > MAX_REPORT_PAYLOAD {
+            return Err(Error::InvalidResponse(format!(
+                "data too large for single HID report: {} bytes (max {MAX_REPORT_PAYLOAD})",
+                data.len()
+            )));
+        }
         let mut report = Vec::with_capacity(data.len() + 1);
         report.push(data.len() as u8);
         report.extend_from_slice(data);
