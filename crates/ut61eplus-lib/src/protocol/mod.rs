@@ -1,5 +1,8 @@
 pub mod framing;
+pub mod ut171;
+pub mod ut181a;
 pub mod ut61eplus;
+pub mod ut8803;
 
 use crate::error::Result;
 use crate::measurement::Measurement;

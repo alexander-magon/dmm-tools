@@ -77,12 +77,9 @@ pub fn open_device(family: DeviceFamily) -> Result<Dmm<cp2110::Cp2110>> {
 
     let protocol: Box<dyn Protocol> = match family {
         DeviceFamily::Ut61EPlus => Box::new(protocol::ut61eplus::Ut61PlusProtocol::new()),
-        // Other families will be added in subsequent steps
-        _ => {
-            return Err(Error::invalid_response_msg(format!(
-                "protocol family {family} not yet implemented"
-            )));
-        }
+        DeviceFamily::Ut8803 => Box::new(protocol::ut8803::Ut8803Protocol::new()),
+        DeviceFamily::Ut171 => Box::new(protocol::ut171::Ut171Protocol::new()),
+        DeviceFamily::Ut181a => Box::new(protocol::ut181a::Ut181aProtocol::new()),
     };
 
     Dmm::new(cp, protocol)
