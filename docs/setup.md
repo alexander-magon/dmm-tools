@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Rust toolchain (stable, 2024 edition)
-- UNI-T UT61E+ multimeter connected via USB
+- A supported UNI-T multimeter connected via USB (see [supported devices](supported-devices.md) for the full list: UT61E+, UT61B+, UT61D+, UT161 series, UT8803, UT171, UT181A)
 
 **Linux:** `libudev-dev` (Debian/Ubuntu) or `systemd-devel` (Fedora) for hidapi.
 

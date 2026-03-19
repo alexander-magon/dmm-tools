@@ -113,30 +113,59 @@ ut61eplus read --format json --interval-ms 1000
 
 ### ut61eplus command
 
-Send a button-press command to the meter.
+Send a remote command to the meter. Available commands depend on the
+device family. Run with no arguments to list available commands:
 
 ```
-ut61eplus command <ACTION>
+ut61eplus command              # list commands for default device
+ut61eplus --device ut181a command  # list commands for UT181A
+ut61eplus command <ACTION>     # send a command
 ```
 
-| Action | Description |
+#### UT61E+ commands
+
+| Command | Description |
 |---|---|
 | `hold` | Toggle Hold mode |
-| `min-max` | Enter Min/Max recording |
-| `exit-min-max` | Exit Min/Max recording |
+| `minmax` | Enter Min/Max recording |
+| `exit_minmax` | Exit Min/Max recording |
 | `rel` | Toggle Relative mode |
 | `range` | Cycle manual range |
 | `auto` | Return to auto-range |
 | `select` | Select button (mode-dependent) |
-| `select2` | Select2 button (mode-dependent) |
+| `select2` | Select2 / Hz button (mode-dependent) |
 | `light` | Toggle backlight |
-| `peak-min-max` | Enter Peak Min/Max mode |
-| `exit-peak` | Exit Peak Min/Max mode |
+| `peak` | Enter Peak Min/Max mode |
+| `exit_peak` | Exit Peak Min/Max mode |
+
+#### UT181A commands
+
+| Command | Description |
+|---|---|
+| `hold` | Toggle Hold mode |
+| `range` | Set manual range 1 |
+| `auto` | Return to auto-range |
+| `minmax` | Enable Min/Max recording |
+| `exit_minmax` | Disable Min/Max recording |
+| `monitor` | Enable streaming (SET_MONITOR) |
+| `save` | Save current measurement to device memory |
+
+#### UT171 commands
+
+| Command | Description |
+|---|---|
+| `connect` | Start measurement streaming |
+| `pause` | Stop measurement streaming |
+
+#### UT8803
+
+No remote commands — the meter streams continuously after connection.
 
 **Example:**
 
 ```bash
 ut61eplus command hold
+ut61eplus --device ut181a command hold
 ```
 
 ### ut61eplus debug

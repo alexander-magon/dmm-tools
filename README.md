@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/antoinecellerier/dmm-tools)](https://github.com/antoinecellerier/dmm-tools/releases)
 [![License: GPL-3.0-or-later](https://img.shields.io/github/license/antoinecellerier/dmm-tools)](LICENSE)
 
-Rust tools for communicating with digital multimeters over USB. Currently supports the **UNI-T UT61E+** via its CP2110 HID bridge.
+Rust tools for communicating with UNI-T digital multimeters over USB (CP2110 HID bridge). Supports the **UT61E+** family (verified) with experimental support for **UT8803**, **UT171**, and **UT181A**.
 
 Includes a CLI for reading, recording, and remote-controlling the meter, and a GUI with real-time graphing.
 
@@ -39,7 +39,14 @@ Send remote commands:
 
 ```
 $ ut61eplus command hold
-Sent Hold
+Sent hold
+```
+
+Connect to other device families with `--device`:
+
+```
+$ ut61eplus --device ut8803 debug --count 3
+WARNING: UNI-T UT8803 support is EXPERIMENTAL (unverified against real hardware).
 ```
 
 ## GUI
@@ -52,11 +59,16 @@ Sent Hold
 
 ## Supported devices
 
-Tested with the **UT61E+**. Should also work with the **UT61B+**, **UT61D+**, **UT161B/D/E**, and **UT60BT** — all use the same CP2110 USB protocol with different mode/range tables.
+| Family | Models | Protocol | Status |
+|--------|--------|----------|--------|
+| UT61+/UT161 | UT61E+, UT61B+, UT61D+, UT161B/D/E | Polled, ASCII values | **Verified** (UT61E+) |
+| UT8803 | UT8803, UT8803E | Streaming, 21-byte frames | Experimental |
+| UT171 | UT171A/B/C | Streaming, float32 values | Experimental |
+| UT181A | UT181A | Streaming, float32 + unit strings | Experimental |
 
-If you have one of these models, please [submit a capture](CONTRIBUTING.md#protocol-captures) so we can confirm support.
+**Experimental** means the protocol was reverse-engineered from vendor software but has not been tested against real hardware. If you have one of these meters, please run `ut61eplus --device <family> debug` and [report your findings](https://github.com/antoinecellerier/dmm-tools/issues).
 
-See [docs/supported-devices.md](docs/supported-devices.md) for the full compatibility list, future candidates, and reference implementations.
+See [docs/supported-devices.md](docs/supported-devices.md) for the full compatibility list and reference implementations.
 
 ## Quick start
 
@@ -66,7 +78,7 @@ Pre-built binaries for Linux and Windows are available on the [Releases](https:/
 
 - **Linux:** `libudev-dev` (Debian/Ubuntu) or `systemd-devel` (Fedora) — only needed when building from source
 - **Windows:** [CP2110 driver](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers) from Silicon Labs
-- UNI-T UT61E+ with USB adapter plugged in
+- A [supported UNI-T multimeter](docs/supported-devices.md) with USB adapter plugged in
 
 ### Install from source
 
@@ -100,14 +112,17 @@ Your user must be in the `plugdev` group (`sudo usermod -aG plugdev $USER`, then
 # List connected devices
 ut61eplus list
 
-# Stream measurements
+# Stream measurements (UT61E+ default)
 ut61eplus read
+
+# Use a different device family
+ut61eplus --device ut8803 read
 
 # Launch the GUI
 ut61eplus-gui
 ```
 
-If the meter doesn't respond, make sure USB transmission is active: insert the USB module, turn the meter on, and long-press the **USB/Hz** button until the **S** icon appears on the LCD.
+If the meter doesn't respond, make sure USB transmission is active: insert the USB module, turn the meter on, and long-press the **USB/Hz** button until the **S** icon appears on the LCD. For UT171/UT181A, enable "Communication ON" in the meter's SETUP menu.
 
 ## Project structure
 

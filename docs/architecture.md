@@ -20,28 +20,35 @@ The library crate handles all device communication and data parsing. It has no U
 |--------|---------------|
 | `cp2110.rs` | CP2110 HID transport: open device, init UART, read/write interrupt reports |
 | `transport.rs` | `Transport` trait abstracting HID I/O; `MockTransport` for tests |
-| `protocol.rs` | Message framing: find `AB CD` header, extract payload, validate checksum. `pub(crate)` — internal to library. |
-| `measurement.rs` | `Measurement` struct + `parse()`: decode 14-byte payload into typed reading |
-| `mode.rs` | `Mode` enum: 31 measurement modes (DCV, ACV, Ohm, etc.) |
+| `protocol/mod.rs` | `Protocol` trait (object-safe), `DeviceFamily` enum, `DeviceProfile`, `Stability` |
+| `protocol/framing.rs` | Message framing: find `AB CD` header, extract payload, validate checksum |
+| `protocol/ut61eplus/` | UT61E+ family: `Ut61PlusProtocol`, `Mode` enum, `Command` enum, `tables/` (per-model `DeviceTable` impls) |
+| `protocol/ut8803/` | UT8803 family: `Ut8803Protocol` — streaming protocol with 0x5A trigger |
+| `protocol/ut171/` | UT171 family: `Ut171Protocol` — streaming protocol, float32 LE values |
+| `protocol/ut181a/` | UT181A: `Ut181aProtocol` — streaming protocol, device-sent unit strings |
+| `measurement.rs` | `Measurement` struct: mode, value, unit, flags (protocol-agnostic) |
 | `flags.rs` | `StatusFlags`: Hold, Rel, Auto, Min/Max, Low Battery |
-| `command.rs` | `Command` enum: remote button presses with wire encoding |
-| `tables/` | `DeviceTable` trait + `Ut61ePlusTable`: mode/range → unit/label lookup |
 | `error.rs` | `Error` enum via `thiserror` |
 | `lib.rs` | `Dmm` struct: top-level API tying everything together |
 
 **Data flow:**
 
 ```
-USB HID ──► Cp2110 (Transport) ──► protocol::extract_frame() ──► Measurement::parse()
-                                                                      │
-                                                              DeviceTable lookup
-                                                                      │
-                                                                      ▼
-                                                               Measurement {
-                                                                 mode, value,
-                                                                 unit, flags, ...
-                                                               }
+USB HID ──► Cp2110 (Transport) ──► Box<dyn Protocol> ──► Measurement { mode, value, unit, flags, ... }
+                                         │
+                              DeviceFamily selects impl:
+                              ├── Ut61PlusProtocol  (polled, AB CD framing, DeviceTable lookup)
+                              ├── Ut8803Protocol    (streaming, 0x5A trigger)
+                              ├── Ut171Protocol     (streaming, float32 LE)
+                              └── Ut181aProtocol    (streaming, device-sent units)
 ```
+
+`Dmm<T: Transport>` holds a `Box<dyn Protocol>`. The `Protocol` trait provides `init()`,
+`request_measurement()`, `send_command()`, `get_name()`, `profile()`, and `capture_steps()`.
+`DeviceFamily` provides `activation_instructions()` for user-facing setup guidance. Each
+family implements its own framing, parsing, and command encoding internally, but all
+produce the same `Measurement` struct. `open_device(family)` constructs the appropriate protocol
+implementation based on the `DeviceFamily` enum.
 
 ### ut61eplus-cli
 
@@ -75,9 +82,10 @@ sample log, persistent settings.
 2. **Direct hidapi, no cp211x_uart** — the cp211x_uart crate is unmaintained (2017). Our CP2110 layer is ~120 lines.
 3. **hidraw backend** — required for HID feature reports on Linux (libusb backend doesn't support them).
 4. **Transport trait** — enables `MockTransport` for testing without hardware.
-5. **Device tables via trait** — adding a new meter model = adding one file implementing `DeviceTable`.
-6. **No nom** — payload is a fixed 14-byte struct. Direct indexing is clearer.
-7. **Measurement fields use `&'static str`** — `unit` and `range_label` reference static table data, avoiding heap allocation per measurement.
-8. **Graph segment caching** — segments and gap ranges are rebuilt only when history changes, not every render frame.
-9. **Bounded buffers** — graph history (10K points), recording (500K samples), and the background channel prevent unbounded memory growth during sustained use.
-10. **Settings schema evolution** — `#[serde(default)]` on `Settings` allows adding new fields without breaking existing config files.
+5. **Protocol trait** — each device family implements `Protocol` (object-safe, `Send`). `Dmm` dispatches through `Box<dyn Protocol>`, so callers don't need to know the family at compile time.
+6. **Device tables via trait** — within the UT61E+ family, adding a new meter model = adding one file implementing `DeviceTable`.
+7. **No nom** — payload is a fixed 14-byte struct. Direct indexing is clearer.
+8. **Measurement fields use `&'static str`** — `unit` and `range_label` reference static table data, avoiding heap allocation per measurement.
+9. **Graph segment caching** — segments and gap ranges are rebuilt only when history changes, not every render frame.
+10. **Bounded buffers** — graph history (10K points), recording (500K samples), and the background channel prevent unbounded memory growth during sustained use.
+11. **Settings schema evolution** — `#[serde(default)]` on `Settings` allows adding new fields without breaking existing config files.

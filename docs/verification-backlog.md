@@ -26,6 +26,45 @@ cycling SELECT and SELECT2 on V~, V=, mA, and A⎓ dial positions.
 - **0x16 (LoZ V 2):** Vendor software names it "LozV". Not reachable on UT61E+.
 - **0x17 (LPF):** Vendor software names it "LPF". Not reachable on UT61E+.
 
+### Experimental protocol families (no real hardware access)
+
+These protocols are implemented based on reverse engineering (vendor software
+decompilation, community implementations) but have **never been tested against
+real hardware**. Every aspect needs end-to-end verification.
+
+**UT8803 / UT8803E:**
+- Frame extraction (21-byte, AB CD header, BE checksum)
+- 0x5A streaming trigger byte
+- Mode byte mapping (23 position codes, 0x00-0x16)
+- Range byte (0x30 prefix, like UT61E+)
+- Display bytes (5 raw bytes — ASCII or binary encoding?)
+- Flag byte → semantic flag mapping (HOLD, REL, MIN, MAX, AUTO, OL).
+  The RE spec documents the constructed 32-bit status word, but the
+  raw-byte-to-status-word construction is complex. Current bit assignments
+  are plausible guesses — need real device verification.
+- Display value parsing (5 bytes → float)
+- Streaming rate (~2-3 Hz per manual)
+
+**UT171A / UT171B / UT171C:**
+- Frame extraction (1-byte length, LE checksum)
+- Connect command (`AB CD 04 00 0A 01 0F 00`) — may be needed before streaming
+- Mode byte mapping (26 modes, 0x01-0x24)
+- Float32 LE value parsing
+- Flags byte (HOLD bit 7, AUTO bit 6 inverted, Low Battery bit 2)
+- Range byte (raw, 1-based)
+- Extended frame (28 bytes, frame type 0x03) — not yet parsed
+- Status2 byte (offset 13) meaning
+- Aux value interpretation
+
+**UT181A:**
+- Frame extraction (2-byte LE length, LE checksum)
+- Mode word decoding (97 nibble-encoded uint16 modes)
+- Float32 LE value parsing with precision byte
+- Device-sent unit string parsing
+- Misc byte format variants (normal, relative, min/max, peak)
+- Misc2 flags (auto-range, HV warning, lead error, COMP, record)
+- Measurement packet variants beyond normal format
+
 ### CP2110 feature reports (AN434)
 - (none pending)
 

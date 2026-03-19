@@ -56,16 +56,19 @@ different display value handling. Requires UT61D+ device testing.
 
 If you have any of the untested models, please [submit a capture](../CONTRIBUTING.md#protocol-captures) so we can confirm support and add the correct device tables.
 
-## Future candidates (UCI protocol family)
+## Experimental: UT8803 (UCI protocol family)
 
-These bench DMMs use the same CP2110 USB bridge but a fundamentally
-different protocol: UNI-T's UCI (United Communication Interface) SDK
-with streaming measurement frames and a 64-bit flags word. Supporting
-them requires a separate protocol implementation.
+These bench DMMs use the same CP2110 USB bridge but a different
+streaming protocol. Use `--device ut8803`.
 
 | Model | Brand | Type | VID:PID | Status | Notes |
 |-------|-------|------|---------|--------|-------|
-| **UT8803 / UT8803E** | UNI-T | Bench DMM | `10C4:EA80` | RE complete | 21-byte AB CD frames, streaming after 0x5A trigger |
+| **UT8803 / UT8803E** | UNI-T | Bench DMM | `10C4:EA80` | **Experimental** | 21-byte AB CD frames, streaming after 0x5A trigger |
+
+## Future candidates (UCI protocol family)
+
+| Model | Brand | Type | VID:PID | Status | Notes |
+|-------|-------|------|---------|--------|-------|
 | **UT8802 / UT8802N** | UNI-T | Bench DMM | `10C4:EA80` | RE complete | 0xAC header, 8-byte BCD frames, no checksum |
 | **UT632 / UT632N** | UNI-T | Bench DMM | `1A86:E008` | Documented | QinHeng HID with auto-detect (0xAC or 0xABCD) |
 | **UT803 / UT803N** | UNI-T | Bench DMM | `1A86:E008` | Documented | QinHeng HID with auto-detect (0xAC or 0xABCD) |
@@ -120,24 +123,22 @@ Our clean-room RE of the UCI bench family is documented in
 - [philpagel/ut8803e](https://github.com/philpagel/ut8803e) — Python, UT8803/UT8803E, detailed protocol docs
 - [hskim7639/UNI-T](https://github.com/hskim7639/UNI-T) — Python (Windows), UT8803E
 
-## Other CP2110 meters (different protocols)
+## Experimental: UT171 and UT181A
 
-These meters use CP2110 for USB transport but have fundamentally different
-serial protocols. Listed here for reference — supporting them would be
-separate implementation efforts.
+Use `--device ut171` or `--device ut181a`. Requires manual "Communication
+ON" in the meter's SETUP menu.
+
+| Model | Brand | Type | VID:PID | Status | Notes |
+|-------|-------|------|---------|--------|-------|
+| **UT171A/B/C** | UNI-T | Industrial DMM | `10C4:EA80` | **Experimental** | 1-byte length, LE float32, 26 modes |
+| **UT181A** | UNI-T | Logging DMM | `10C4:EA80` | **Experimental** | 2-byte LE length, float32 + unit strings, 97 modes |
+
+## Other CP2110 meters (not yet implemented)
 
 | Model | Brand | Type | Protocol | Reference |
 |-------|-------|------|----------|-----------|
-| **UT171A/B/C** | UNI-T | Industrial DMM | RE complete: 0xABCD header, 1-byte length, LE float32, 26 modes, data logging | [gulux/Uni-T-CP2110](https://github.com/gulux/Uni-T-CP2110), [smartypies.com](http://www.smartypies.com/projects/ut171a-data-reader-on-linux/) |
-| **UT181A** | UNI-T | Logging DMM | 0xABCD header¹, 2-byte LE length, float32 values, 97 modes, recording | [antage/ut181a](https://github.com/antage/ut181a) (Rust, with [protocol docs](https://github.com/antage/ut181a/blob/master/Protocol.md)), [loblab/ut181a](https://github.com/loblab/ut181a) (C++), [sigrok](https://sigrok.org/wiki/UNI-T_UT181A) |
 | **UT612** | UNI-T | LCR meter | ES51919 chipset, TX-only | [sigrok wiki](https://sigrok.org/wiki/UNI-T_UT612) |
 | **Voltcraft VC-890** | Voltcraft (UNI-T rebrand) | DMM | ES51997P chipset, own protocol | [sigrok wiki](https://sigrok.org/wiki/Voltcraft_VC-890) |
-
-¹ The UT181A wire bytes are 0xAB, 0xCD -- **same as UT61E+**. Some sources
-describe the header as "0xCDAB" because the UT181A protocol reads these bytes
-as a little-endian uint16 (0xCDAB), while UT61E+ interprets them big-endian
-(0xABCD). The actual difference is in the length field (2 bytes LE vs 1 byte),
-checksum (LE vs BE), and value encoding (float32 vs ASCII).
 
 ### Independent research findings
 

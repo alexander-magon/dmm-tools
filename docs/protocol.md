@@ -1,4 +1,16 @@
-# Protocol Reference
+# Protocol Reference — UT61E+ Family
+
+This document covers the UT61E+ / UT61B+ / UT61D+ / UT161 family protocol.
+For other supported device families, see the per-family research docs:
+
+- [UT8803 protocol](research/ut8803/reverse-engineered-protocol.md)
+- [UT171 protocol](research/ut171/reverse-engineered-protocol.md)
+- [UT181A protocol](research/ut181/reverse-engineered-protocol.md)
+
+All families share the same CP2110 HID-to-UART bridge and `AB CD` header framing,
+but differ in message structure, byte ordering, value encoding, and
+polled-vs-streaming behavior. Each family has its own `Protocol` trait
+implementation in `crates/ut61eplus-lib/src/protocol/`.
 
 ## CP2110 HID-to-UART Bridge
 

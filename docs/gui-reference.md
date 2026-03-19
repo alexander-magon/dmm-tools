@@ -19,6 +19,12 @@ ut61eplus-gui
 A desktop GUI for live measurement display, time-series graphing, recording,
 and remote control of the UNI-T UT61E+ multimeter. Built with egui/eframe.
 
+The Settings panel includes a **Device** selector with all supported
+models (UT61E+, UT61B+, UT61D+, UT161B/D/E, UT8803, UT171A/B/C,
+UT181A). The selection persists across sessions and requires a
+reconnect to take effect. When connected to an experimental (unverified)
+protocol, an orange **EXPERIMENTAL** badge appears in the top bar.
+
 ![Wide layout — live measurement with graph, statistics, recording, and minimap](../assets/gui-wide-layout.png)
 
 ## Top Bar
