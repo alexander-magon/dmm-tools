@@ -55,6 +55,11 @@ impl<T: Transport> Dmm<T> {
     pub fn profile(&self) -> &protocol::DeviceProfile {
         self.protocol.profile()
     }
+
+    /// Get capture steps defined by the protocol.
+    pub fn capture_steps(&self) -> Vec<protocol::CaptureStep> {
+        self.protocol.capture_steps()
+    }
 }
 
 /// Open the first UT61E+ device found via hidapi and return an initialized Dmm.

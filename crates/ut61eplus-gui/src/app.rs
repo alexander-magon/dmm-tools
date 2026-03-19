@@ -3,6 +3,7 @@ use log::{error, info, warn};
 use std::sync::mpsc;
 use std::time::Instant;
 use ut61eplus_lib::measurement::{MeasuredValue, Measurement};
+use ut61eplus_lib::protocol::{DeviceFamily, Stability};
 
 use crate::display;
 use crate::graph::Graph;
@@ -13,7 +14,7 @@ use crate::stats::Stats;
 /// Messages from the background thread to the UI.
 pub enum DmmMessage {
     Measurement(Measurement),
-    Connected(String), // device name
+    Connected(String, bool), // device name, experimental
     Disconnected(String),
     Error(String),
     /// Waiting for meter response (consecutive timeout count).
@@ -34,6 +35,8 @@ pub struct App {
 
     connection_state: ConnectionState,
     device_name: Option<String>,
+    /// Whether the connected protocol is experimental (unverified).
+    experimental: bool,
     /// When true, incoming measurements are ignored (connection stays alive).
     paused: bool,
     last_error: Option<String>,
@@ -73,6 +76,7 @@ impl App {
             settings_open: false,
             connection_state: ConnectionState::Disconnected,
             device_name: None,
+            experimental: false,
             paused: false,
             last_error: None,
             waiting_timeouts: 0,
@@ -181,21 +185,27 @@ impl App {
         let ctx_clone = ctx.clone();
         let query_name = self.settings.query_device_name;
         let sample_interval_ms = self.settings.sample_interval_ms;
+        let device_family = self
+            .settings
+            .device_family
+            .parse::<DeviceFamily>()
+            .unwrap_or(DeviceFamily::Ut61EPlus);
         self.graph.set_sample_interval_ms(sample_interval_ms);
 
         std::thread::spawn(move || {
             let panic_tx = msg_tx.clone();
             let panic_ctx = ctx_clone.clone();
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                info!("background thread: connecting to device");
-                let mut dmm = match ut61eplus_lib::open() {
+                info!("background thread: connecting to device ({device_family})");
+                let mut dmm = match ut61eplus_lib::open_device(device_family) {
                     Ok(mut d) => {
+                        let experimental = d.profile().stability == Stability::Experimental;
                         let name = if query_name {
                             d.get_name().ok().flatten().unwrap_or_default()
                         } else {
                             String::new()
                         };
-                        let _ = msg_tx.send(DmmMessage::Connected(name));
+                        let _ = msg_tx.send(DmmMessage::Connected(name, experimental));
                         ctx_clone.request_repaint();
                         d
                     }
@@ -252,15 +262,16 @@ impl App {
                                     return;
                                 }
                                 std::thread::sleep(std::time::Duration::from_secs(2));
-                                match ut61eplus_lib::open() {
+                                match ut61eplus_lib::open_device(device_family) {
                                     Ok(mut d) => {
+                                        let exp = d.profile().stability == Stability::Experimental;
                                         let name = if query_name {
                                             d.get_name().ok().flatten().unwrap_or_default()
                                         } else {
                                             String::new()
                                         };
                                         dmm = d;
-                                        let _ = msg_tx.send(DmmMessage::Connected(name));
+                                        let _ = msg_tx.send(DmmMessage::Connected(name, exp));
                                         ctx_clone.request_repaint();
                                         break;
                                     }
@@ -301,6 +312,7 @@ impl App {
         self.cmd_tx = None;
         self.connection_state = ConnectionState::Disconnected;
         self.device_name = None;
+        self.experimental = false;
         self.paused = false;
     }
 
@@ -315,8 +327,9 @@ impl App {
 
         for msg in messages {
             match msg {
-                DmmMessage::Connected(name) => {
+                DmmMessage::Connected(name, exp) => {
                     self.connection_state = ConnectionState::Connected;
+                    self.experimental = exp;
                     self.device_name = if name.is_empty() {
                         None
                     } else {
@@ -568,6 +581,10 @@ impl App {
             ui.painter().circle_filled(rect.center(), 5.0, dot_color);
             ui.label(RichText::new(status_text).small());
 
+            if self.experimental && self.connection_state == ConnectionState::Connected {
+                ui.label(RichText::new("EXPERIMENTAL").small().strong().color(orange));
+            }
+
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("\u{2699}").clicked() {
                     self.settings_open = !self.settings_open;
@@ -678,6 +695,39 @@ impl App {
                     .clicked()
                 {
                     self.settings.sample_interval_ms = ms;
+                    changed = true;
+                }
+            }
+            if changed {
+                self.settings.save();
+            }
+            ui.label(
+                RichText::new("(requires reconnect)")
+                    .small()
+                    .color(ui.visuals().weak_text_color()),
+            );
+        });
+
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Device:");
+            let mut changed = false;
+            // List all supported models — each resolves to a DeviceFamily via FromStr
+            for &(value, label) in &[
+                ("ut61eplus", "UT61E+"),
+                ("ut61b+", "UT61B+"),
+                ("ut61d+", "UT61D+"),
+                ("ut161b", "UT161B"),
+                ("ut161d", "UT161D"),
+                ("ut161e", "UT161E"),
+                ("ut8803", "UT8803"),
+                ("ut171", "UT171A/B/C"),
+                ("ut181a", "UT181A"),
+            ] {
+                if ui
+                    .selectable_label(self.settings.device_family == value, label)
+                    .clicked()
+                {
+                    self.settings.device_family = value.to_string();
                     changed = true;
                 }
             }

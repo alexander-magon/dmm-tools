@@ -66,6 +66,18 @@ impl std::str::FromStr for DeviceFamily {
     }
 }
 
+/// A step definition for the guided protocol capture wizard.
+pub struct CaptureStep {
+    /// Unique identifier for this step (e.g. "dcv", "hold_on").
+    pub id: &'static str,
+    /// Human-readable instruction for the user (e.g. "Set meter to DC V mode").
+    pub instruction: &'static str,
+    /// Optional command to send before capturing (e.g. "hold").
+    pub command: Option<&'static str>,
+    /// Number of samples to capture for this step.
+    pub samples: usize,
+}
+
 /// Each device family implements this trait. Object-safe.
 ///
 /// The Protocol owns its internal state (rx buffer, streaming trigger state, etc).
@@ -88,4 +100,10 @@ pub trait Protocol: Send {
 
     /// Static device profile information.
     fn profile(&self) -> &DeviceProfile;
+
+    /// Capture steps for the guided protocol capture wizard.
+    /// Returns basic measurement mode steps that any user can run.
+    fn capture_steps(&self) -> Vec<CaptureStep> {
+        vec![]
+    }
 }

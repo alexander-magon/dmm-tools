@@ -134,6 +134,56 @@ impl SampleData {
     }
 }
 
+/// Run a simplified capture using protocol-provided steps.
+/// Used for experimental (non-UT61E+) protocols.
+fn run_protocol_capture(
+    dmm: &mut ut61eplus_lib::Dmm<ut61eplus_lib::cp2110::Cp2110>,
+    protocol_steps: Vec<ut61eplus_lib::protocol::CaptureStep>,
+    step_filter: &Option<std::collections::HashSet<String>>,
+    report: &mut CaptureReport,
+    output_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let include = |id: &str| -> bool { step_filter.as_ref().is_none_or(|f| f.contains(id)) };
+
+    // Convert protocol steps to CLI steps
+    let steps: Vec<CaptureStep> = protocol_steps
+        .iter()
+        .map(|ps| CaptureStep {
+            id: ps.id,
+            instruction: ps.instruction,
+            command: ps.command,
+            samples: ps.samples,
+        })
+        .collect();
+
+    eprintln!(
+        "{}",
+        style("\u{2501}\u{2501}\u{2501} Measurement Modes \u{2501}\u{2501}\u{2501}").bold()
+    );
+    eprintln!(
+        "{}",
+        style("any key=capture, s=skip one, q=skip to end and save").dim()
+    );
+
+    for step in &steps {
+        if !include(step.id) {
+            continue;
+        }
+        let done = run_capture_step(dmm, step, report, true)?;
+        save_report(report, output_path)?;
+        if done {
+            break;
+        }
+    }
+
+    eprintln!(
+        "\n{} {}",
+        style("Capture complete!").green().bold(),
+        style(format!("Saved to {output_path}")).dim()
+    );
+    Ok(())
+}
+
 // --- Step definitions ---
 
 pub struct CaptureStep {
@@ -1018,6 +1068,18 @@ pub fn cmd_capture(
         report.cp2110_firmware = Some(ver.device_version);
     }
     report.supported = supported;
+
+    // For non-UT61E+ protocols, use protocol-provided capture steps
+    let protocol_steps = dmm.capture_steps();
+    if !protocol_steps.is_empty() {
+        return run_protocol_capture(
+            &mut dmm,
+            protocol_steps,
+            &step_filter,
+            &mut report,
+            &output_path,
+        );
+    }
 
     let all_steps = all_capture_steps();
     let is_filtered = step_filter.is_some();

@@ -136,6 +136,127 @@ impl Protocol for Ut8803Protocol {
     fn profile(&self) -> &DeviceProfile {
         &self.profile
     }
+
+    fn capture_steps(&self) -> Vec<crate::protocol::CaptureStep> {
+        use crate::protocol::CaptureStep;
+        // All 23 UT8803 position codes (modes 0x00-0x16)
+        vec![
+            CaptureStep {
+                id: "dcv",
+                instruction: "Set meter to DC V (DCV)",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "acv",
+                instruction: "Set meter to AC V (ACV)",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "dcua",
+                instruction: "Set meter to DC uA",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "dcma",
+                instruction: "Set meter to DC mA",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "dca",
+                instruction: "Set meter to DC A",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "acua",
+                instruction: "Set meter to AC uA",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "acma",
+                instruction: "Set meter to AC mA",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "aca",
+                instruction: "Set meter to AC A",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "ohm",
+                instruction: "Set meter to Resistance (OHM)",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "cont",
+                instruction: "Set meter to Continuity",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "diode",
+                instruction: "Set meter to Diode",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "ind",
+                instruction: "Set meter to Inductance (L)",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "cap",
+                instruction: "Set meter to Capacitance (C)",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "hfe",
+                instruction: "Set meter to hFE (transistor test)",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "scr",
+                instruction: "Set meter to SCR (thyristor test)",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "tempc",
+                instruction: "Set meter to Temperature C",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "tempf",
+                instruction: "Set meter to Temperature F",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "hz",
+                instruction: "Set meter to Frequency (Hz)",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "duty",
+                instruction: "Set meter to Duty Cycle (%)",
+                command: None,
+                samples: 5,
+            },
+        ]
+    }
 }
 
 /// Parse a UT8803 measurement payload (17 bytes = frame bytes 2..19).

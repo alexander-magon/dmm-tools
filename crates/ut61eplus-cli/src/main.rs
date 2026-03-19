@@ -346,6 +346,7 @@ fn cmd_read(
     })?;
 
     let mut dmm = open_with_help(family)?;
+    let experimental = dmm.profile().stability == ut61eplus_lib::protocol::Stability::Experimental;
     info!("connected, starting measurement loop");
 
     let mut writer: Box<dyn Write> = match &output_path {
@@ -368,7 +369,7 @@ fn cmd_read(
                 if let MeasuredValue::Normal(v) = &m.value {
                     stats.push(*v);
                 }
-                format::format_measurement(&mut writer, &m, &format)?;
+                format::format_measurement(&mut writer, &m, &format, experimental)?;
                 writer.flush()?;
                 i += 1;
             }
@@ -626,7 +627,7 @@ mod tests {
     fn format_text_output() {
         let m = make_measurement(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mut buf = Vec::new();
-        format::format_measurement(&mut buf, &m, &OutputFormat::Text).unwrap();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Text, false).unwrap();
         let output = String::from_utf8(buf).unwrap();
         assert!(output.contains("5.678"));
         assert!(output.contains("V"));
@@ -636,7 +637,7 @@ mod tests {
     fn format_csv_output() {
         let m = make_measurement(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mut buf = Vec::new();
-        format::format_measurement(&mut buf, &m, &OutputFormat::Csv).unwrap();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Csv, false).unwrap();
         let output = String::from_utf8(buf).unwrap();
         let fields: Vec<&str> = output.trim().split(',').collect();
         assert!(fields.len() >= 6);
@@ -651,7 +652,7 @@ mod tests {
         // flag1=0x02 (HOLD), flag2=0x00 (AUTO on, inverted logic)
         let m = make_measurement(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x02, 0x00, 0x00));
         let mut buf = Vec::new();
-        format::format_measurement(&mut buf, &m, &OutputFormat::Json).unwrap();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Json, false).unwrap();
         let output = String::from_utf8(buf).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert_eq!(parsed["mode"], "DC V");
@@ -659,13 +660,24 @@ mod tests {
         assert_eq!(parsed["unit"], "V");
         assert_eq!(parsed["flags"]["hold"], true);
         assert_eq!(parsed["flags"]["auto_range"], true);
+        assert_eq!(parsed["experimental"], false);
+    }
+
+    #[test]
+    fn format_json_experimental_flag() {
+        let m = make_measurement(0x02, 0x00, b"  1.234", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let mut buf = Vec::new();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Json, true).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(parsed["experimental"], true);
     }
 
     #[test]
     fn format_csv_overload() {
         let m = make_measurement(0x06, 0x00, b"    OL ", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mut buf = Vec::new();
-        format::format_measurement(&mut buf, &m, &OutputFormat::Csv).unwrap();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Csv, false).unwrap();
         let output = String::from_utf8(buf).unwrap();
         assert!(output.contains(",OL,"));
     }
@@ -674,7 +686,7 @@ mod tests {
     fn format_json_overload() {
         let m = make_measurement(0x06, 0x00, b"    OL ", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mut buf = Vec::new();
-        format::format_measurement(&mut buf, &m, &OutputFormat::Json).unwrap();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Json, false).unwrap();
         let output = String::from_utf8(buf).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert_eq!(parsed["value"], "OL");
@@ -695,7 +707,7 @@ mod tests {
     fn format_csv_ncv() {
         let m = make_measurement(0x14, 0x00, b"      3", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mut buf = Vec::new();
-        format::format_measurement(&mut buf, &m, &OutputFormat::Csv).unwrap();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Csv, false).unwrap();
         let output = String::from_utf8(buf).unwrap();
         assert!(output.contains("NCV:3"));
     }
@@ -704,7 +716,7 @@ mod tests {
     fn format_json_ncv() {
         let m = make_measurement(0x14, 0x00, b"      3", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mut buf = Vec::new();
-        format::format_measurement(&mut buf, &m, &OutputFormat::Json).unwrap();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Json, false).unwrap();
         let output = String::from_utf8(buf).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert_eq!(parsed["value"]["ncv_level"], 3);
@@ -715,7 +727,7 @@ mod tests {
     fn format_text_includes_flags() {
         let m = make_measurement(0x02, 0x00, b"  1.234", (0x00, 0x00), (0x0F, 0x00, 0x00));
         let mut buf = Vec::new();
-        format::format_measurement(&mut buf, &m, &OutputFormat::Text).unwrap();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Text, false).unwrap();
         let output = String::from_utf8(buf).unwrap();
         assert!(output.contains("HOLD"));
         assert!(output.contains("REL"));
@@ -725,7 +737,7 @@ mod tests {
     fn format_json_negative_value() {
         let m = make_measurement(0x02, 0x01, b"-12.345", (0x00, 0x00), (0x00, 0x00, 0x00));
         let mut buf = Vec::new();
-        format::format_measurement(&mut buf, &m, &OutputFormat::Json).unwrap();
+        format::format_measurement(&mut buf, &m, &OutputFormat::Json, false).unwrap();
         let output = String::from_utf8(buf).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert!((parsed["value"].as_f64().unwrap() - (-12.345)).abs() < 1e-6);

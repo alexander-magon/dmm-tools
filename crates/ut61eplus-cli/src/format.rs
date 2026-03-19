@@ -7,6 +7,7 @@ pub fn format_measurement(
     w: &mut dyn Write,
     m: &Measurement,
     format: &OutputFormat,
+    experimental: bool,
 ) -> std::io::Result<()> {
     match format {
         OutputFormat::Text => {
@@ -43,6 +44,7 @@ pub fn format_measurement(
                 "range": m.range_label,
                 "display_raw": m.display_raw,
                 "progress": m.progress,
+                "experimental": experimental,
                 "flags": {
                     "hold": m.flags.hold,
                     "rel": m.flags.rel,

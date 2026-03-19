@@ -195,6 +195,127 @@ impl Protocol for Ut181aProtocol {
     fn profile(&self) -> &DeviceProfile {
         &self.profile
     }
+
+    fn capture_steps(&self) -> Vec<crate::protocol::CaptureStep> {
+        use crate::protocol::CaptureStep;
+        // Core UT181A modes
+        vec![
+            CaptureStep {
+                id: "vdc",
+                instruction: "Set meter to V DC",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "vac",
+                instruction: "Set meter to V AC",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "mvdc",
+                instruction: "Set meter to mV DC",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "mvac",
+                instruction: "Set meter to mV AC",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "ohm",
+                instruction: "Set meter to Resistance",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "cont",
+                instruction: "Set meter to Continuity",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "ns",
+                instruction: "Set meter to Conductance (nS)",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "diode",
+                instruction: "Set meter to Diode",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "cap",
+                instruction: "Set meter to Capacitance",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "hz",
+                instruction: "Set meter to Frequency (Hz)",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "duty",
+                instruction: "Set meter to Duty Cycle (%)",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "uadc",
+                instruction: "Set meter to uA DC",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "uaac",
+                instruction: "Set meter to uA AC",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "madc",
+                instruction: "Set meter to mA DC",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "maac",
+                instruction: "Set meter to mA AC",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "adc",
+                instruction: "Set meter to A DC",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "aac",
+                instruction: "Set meter to A AC",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "tempc",
+                instruction: "Set meter to Temperature C",
+                command: None,
+                samples: 5,
+            },
+            CaptureStep {
+                id: "tempf",
+                instruction: "Set meter to Temperature F",
+                command: None,
+                samples: 5,
+            },
+        ]
+    }
 }
 
 /// Parse a UT181A measurement payload (type 0x02 packet).

@@ -199,6 +199,164 @@ impl Protocol for Ut61PlusProtocol {
     fn profile(&self) -> &DeviceProfile {
         &self.profile
     }
+
+    fn capture_steps(&self) -> Vec<crate::protocol::CaptureStep> {
+        use crate::protocol::CaptureStep;
+        vec![
+            // Measurement modes
+            CaptureStep {
+                id: "dcv",
+                instruction: "Set meter to DC V (V\u{23CF}). Leave leads open.",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "dcv_short",
+                instruction: "DC V mode: touch the two probe tips together.",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "acv",
+                instruction: "Set meter to AC V (V~). Leave leads open.",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "dcmv",
+                instruction: "Set meter to DC mV. Leave leads open.",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "ohm",
+                instruction: "Set meter to \u{03A9}. Leave leads open (should show OL).",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "ohm_short",
+                instruction: "\u{03A9} mode: touch the two probe tips together.",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "continuity",
+                instruction: "Set meter to continuity (buzzer). Touch probes together.",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "diode",
+                instruction: "Set meter to diode. Leave leads open (should show OL).",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "capacitance",
+                instruction: "Set meter to capacitance. Leave leads open.",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "hz",
+                instruction: "Set meter to Hz (press SELECT2 on AC mA or V~ mode).",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "duty",
+                instruction: "Hz mode: press SELECT2 again for Duty %.",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "ncv",
+                instruction: "Set meter to NCV. Hold near a live wire.",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "hfe",
+                instruction: "Set meter to hFE (transistor test).",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "dcua",
+                instruction: "Set meter to DC uA.",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "dcma",
+                instruction: "Set meter to DC mA.",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "dca",
+                instruction: "Set meter to DC A (A\u{23CF}).",
+                command: None,
+                samples: 3,
+            },
+            CaptureStep {
+                id: "temp",
+                instruction: "Set meter to temperature (K-type thermocouple, if available).",
+                command: None,
+                samples: 3,
+            },
+            // Flags & commands
+            CaptureStep {
+                id: "hold",
+                instruction: "DC V mode: press HOLD on the meter, or we will send the command.",
+                command: Some("hold"),
+                samples: 3,
+            },
+            CaptureStep {
+                id: "hold_off",
+                instruction: "Press HOLD again to turn it off.",
+                command: Some("hold"),
+                samples: 3,
+            },
+            CaptureStep {
+                id: "rel",
+                instruction: "DC V mode: we will send REL.",
+                command: Some("rel"),
+                samples: 3,
+            },
+            CaptureStep {
+                id: "rel_off",
+                instruction: "We will send REL again to turn it off.",
+                command: Some("rel"),
+                samples: 3,
+            },
+            CaptureStep {
+                id: "minmax",
+                instruction: "We will send MIN/MAX.",
+                command: Some("minmax"),
+                samples: 3,
+            },
+            CaptureStep {
+                id: "minmax_off",
+                instruction: "We will exit MIN/MAX.",
+                command: Some("exit_minmax"),
+                samples: 3,
+            },
+            CaptureStep {
+                id: "range",
+                instruction: "We will send RANGE to switch to manual.",
+                command: Some("range"),
+                samples: 3,
+            },
+            CaptureStep {
+                id: "auto",
+                instruction: "We will send AUTO to return to auto-range.",
+                command: Some("auto"),
+                samples: 3,
+            },
+        ]
+    }
 }
 
 /// Parse a UT61E+/UT61B+/UT61D+/UT161 measurement payload (pure function).
