@@ -135,10 +135,68 @@ ON" in the meter's SETUP menu.
 
 ## Other CP2110 meters (not yet implemented)
 
+### UNI-T
+
 | Model | Brand | Type | Protocol | Reference |
 |-------|-------|------|----------|-----------|
 | **UT612** | UNI-T | LCR meter | ES51919 chipset, TX-only | [sigrok wiki](https://sigrok.org/wiki/UNI-T_UT612) |
-| **Voltcraft VC-890** | Voltcraft (UNI-T rebrand) | DMM | ES51997P chipset, own protocol | [sigrok wiki](https://sigrok.org/wiki/Voltcraft_VC-890) |
+
+### Non-UNI-T (Voltcraft / Conrad Electronics)
+
+These devices use the CP2110 bridge for USB but have **different protocols**
+from the UT61E+ family — they are driven by their own chipsets and require
+independent protocol implementations. The CP2110 transport layer code is
+reusable, but everything above it (framing, parsing, mode/range tables)
+is device-specific.
+
+| Model | Brand | Type | Counts | Chipset | VID:PID | Protocol Status | Reference |
+|-------|-------|------|--------|---------|---------|-----------------|-----------|
+| **VC-890** | Voltcraft | Handheld DMM | 60000 | ES51997P + EFM32 MCU | `10C4:EA80` | Undocumented; sigrok planned | [sigrok wiki](https://sigrok.org/wiki/Voltcraft_VC-890) |
+| **VC-880** | Voltcraft | Handheld DMM | 40000 | Unknown (likely ES51966 family) | `10C4:EA80` (likely) | Undocumented; [pylablib](https://pylablib.readthedocs.io/en/latest/devices/Voltcraft.html) has basic driver | — |
+| **VC650BT** | Voltcraft | Bench DMM | 40000 | ES51966A + MSP430F5418 | `10C4:EA80` | Published: "Protocol Rev2" by Conrad | [EEVBlog thread](https://www.eevblog.com/forum/testgear/voltcraft-vc650bt-multimeter/) |
+
+**Key findings from research:**
+
+- **VC-890**: Confirmed UNI-T OEM (EEVBlog forum identifies UNI-T as
+  the manufacturer). Uses OLED display. The ES51997P is a Cyrustek
+  analog front-end; the EFM32 (Silicon Labs) handles display and
+  communication. Protocol documentation exists as a Conrad PDF but has
+  not been reverse-engineered publicly. The sigrok project lists it as
+  "planned" with `conn=hid/cp2110`.
+- **VC-880**: Lower-spec sibling of the VC-890 (LCD instead of OLED,
+  40k vs 60k counts). Shows up as a standard HID device. pylablib
+  groups VC880 and VC650BT together under the same protocol driver,
+  suggesting they share a wire format. Requires pressing the "PC"
+  button on the front panel to activate USB communication.
+- **VC650BT**: Bench DMM with Bluetooth. Designed by Conrad in-house
+  (not a simple UNI-T rebadge), though EEVBlog users note similarity
+  to UNI-T UT8xxx series. Conrad published a protocol specification
+  document ("Protocol Rev2 VC650BT DESKTOP DMM"). Uses a different
+  chipset family (ES51966A) from both the VC-890 and the UT61E+.
+
+**Why these are hard to support:**
+
+Unlike the UT61+/UT161 family (which shares one protocol with per-model
+tables), each Voltcraft model has its own Cyrustek chipset dictating a
+unique frame format. Supporting them would require:
+1. Reverse-engineering each chipset's serial protocol independently
+2. Building separate parsers for each frame format
+3. Obtaining devices or captures for verification
+
+The only shared component is the CP2110 transport — our existing
+`Cp2110Transport` code works unmodified for the USB layer.
+
+### Devices investigated but NOT using CP2110
+
+These brands were evaluated during research and found to use different
+USB bridge chips:
+
+| Model | Brand | Bridge Chip | Notes |
+|-------|-------|-------------|-------|
+| **VC-870** | Voltcraft | CH9325 (UT-D04 cable) | ES51966A chipset, 40k counts, RS232/USB |
+| **72-7730 / 72-7732** | Tenma | CH9325 / HE2325U (UT-D04) | UNI-T UT71 rebrands, HID but not CP2110 |
+| **BM859 / BM869** | Brymen | IR-to-USB (BC-86X cable) | Infrared link, proprietary segment protocol |
+| **70C / 86C** | Victor | Unmarked SO-20 | FS9922 14-byte HID report protocol |
 
 ### Independent research findings
 
