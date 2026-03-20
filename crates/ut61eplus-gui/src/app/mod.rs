@@ -18,6 +18,22 @@ use crate::specs;
 use crate::theme::ThemeColors;
 use ut61eplus_lib::stats::RunningStats;
 
+/// How long a toast message stays visible (seconds).
+const TOAST_DURATION_SECS: u64 = 4;
+
+/// Default height of the recording panel (logical pixels).
+const DEFAULT_RECORDING_HEIGHT: f32 = 120.0;
+
+/// Initial estimate for non-reading content height in big meter mode.
+const DEFAULT_METER_CONTENT_HEIGHT: f32 = 200.0;
+
+/// Default width for the side panel in wide layout (logical pixels).
+const SIDE_PANEL_DEFAULT_WIDTH: f32 = 240.0;
+
+/// Allowed range for the resizable side panel.
+const SIDE_PANEL_MIN_WIDTH: f32 = 180.0;
+const SIDE_PANEL_MAX_WIDTH: f32 = 400.0;
+
 use connection::{DmmMessage, handle_thread_panic, run_device_thread};
 
 /// Pre-formatted min/max/avg/count strings for a single stats group.
@@ -146,10 +162,10 @@ impl App {
             needs_reconnect: false,
             os_ppp: None,
             applied_theme: None,
-            recording_height: 120.0,
+            recording_height: DEFAULT_RECORDING_HEIGHT,
             toast: None,
             export_result_rx: None,
-            meter_content_height: 200.0, // initial estimate, measured on first frame
+            meter_content_height: DEFAULT_METER_CONTENT_HEIGHT,
             meter_last_size: (0, 0),
         }
     }
@@ -859,7 +875,7 @@ impl eframe::App for App {
 
         // Expire toast after 4 seconds
         if let Some((_, _, when)) = &self.toast
-            && when.elapsed().as_secs() >= 4
+            && when.elapsed().as_secs() >= TOAST_DURATION_SECS
         {
             self.toast = None;
         }
@@ -927,8 +943,8 @@ impl eframe::App for App {
         } else if wide {
             // Wide: left side panel for reading + stats (resizable)
             egui::SidePanel::left("reading_panel")
-                .default_width(240.0)
-                .width_range(180.0..=400.0)
+                .default_width(SIDE_PANEL_DEFAULT_WIDTH)
+                .width_range(SIDE_PANEL_MIN_WIDTH..=SIDE_PANEL_MAX_WIDTH)
                 .resizable(true)
                 .show(ctx, |ui| {
                     display::show_reading(ui, self.last_measurement.as_ref());

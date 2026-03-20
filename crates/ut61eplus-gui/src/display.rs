@@ -1,6 +1,12 @@
 use eframe::egui::{Color32, FontId, RichText, Ui};
 use ut61eplus_lib::measurement::{MeasuredValue, Measurement};
 
+/// Base font size for the primary reading in the wide (side panel) layout.
+const BASE_READING_FONT_SIZE: f32 = 36.0;
+
+/// Font size for the primary reading in the compact (narrow) layout.
+const COMPACT_READING_FONT_SIZE: f32 = 28.0;
+
 /// Format the meter's raw 7-char display string for stable rendering.
 /// Replaces leading spaces with figure spaces (U+2007) so the minus sign
 /// doesn't shift digits in monospace font.
@@ -89,7 +95,7 @@ fn show_reading_sized(ui: &mut Ui, measurement: Option<&Measurement>, value_size
 
 /// Render the large primary reading display.
 pub fn show_reading(ui: &mut Ui, measurement: Option<&Measurement>) {
-    show_reading_sized(ui, measurement, 36.0);
+    show_reading_sized(ui, measurement, BASE_READING_FONT_SIZE);
 }
 
 /// Render an extra-large reading that scales to fill available space.
@@ -120,9 +126,9 @@ pub fn show_reading_large(
     let height_coeff = 1.8 + base_content_height / 36.0;
     let size_from_h = available_h / height_coeff;
 
-    let size = size_from_w.min(size_from_h).max(36.0);
+    let size = size_from_w.min(size_from_h).max(BASE_READING_FONT_SIZE);
     show_reading_sized(ui, measurement, size);
-    size / 36.0
+    size / BASE_READING_FONT_SIZE
 }
 
 /// Render the reading as a compact single line (for narrow layout).
@@ -133,8 +139,12 @@ pub fn show_reading_compact(ui: &mut Ui, measurement: Option<&Measurement>) {
 
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                ui.label(RichText::new(&value_text).font(FontId::monospace(28.0)));
-                ui.label(RichText::new(&*m.unit).font(FontId::monospace(28.0)));
+                ui.label(
+                    RichText::new(&value_text).font(FontId::monospace(COMPACT_READING_FONT_SIZE)),
+                );
+                ui.label(
+                    RichText::new(&*m.unit).font(FontId::monospace(COMPACT_READING_FONT_SIZE)),
+                );
                 ui.separator();
                 ui.label(
                     RichText::new(&*m.mode)
@@ -147,7 +157,7 @@ pub fn show_reading_compact(ui: &mut Ui, measurement: Option<&Measurement>) {
         None => {
             ui.label(
                 RichText::new("--- No reading")
-                    .font(FontId::monospace(28.0))
+                    .font(FontId::monospace(COMPACT_READING_FONT_SIZE))
                     .color(ui.visuals().weak_text_color()),
             );
         }
