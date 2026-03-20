@@ -10,7 +10,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use ut61eplus_lib::measurement::MeasuredValue;
-use ut61eplus_lib::protocol::Protocol;
 use ut61eplus_lib::protocol::registry::{self, SelectableDevice};
 
 fn version_string() -> &'static str {
@@ -177,7 +176,7 @@ fn main() {
         } if !device.requires_hardware => {
             cmd_read_mock(interval_ms, format, output, count, mock_mode)
         }
-        Cmd::Command { action } if !device.requires_hardware => cmd_command_mock(action),
+        Cmd::Command { action } if !device.requires_hardware => cmd_command(device, action),
         Cmd::Info | Cmd::Debug { .. } | Cmd::Capture { .. } if !device.requires_hardware => {
             eprintln!(
                 "{} This command requires real hardware (not supported with --device {}).",
@@ -499,29 +498,6 @@ fn run_read_loop<T: ut61eplus_lib::transport::Transport>(
     Ok(())
 }
 
-fn cmd_command_mock(action: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
-    match action {
-        Some(action) => {
-            let mut dmm = ut61eplus_lib::mock::open_mock()?;
-            dmm.send_command(&action)?;
-            println!("{} {action}", style("Sent").green());
-            Ok(())
-        }
-        None => {
-            let protocol = ut61eplus_lib::mock::MockProtocol::new();
-            let cmds = protocol.profile().supported_commands;
-            println!(
-                "Available commands for {}:",
-                style(protocol.profile().model_name).bold()
-            );
-            for cmd in cmds {
-                println!("  {cmd}");
-            }
-            Ok(())
-        }
-    }
-}
-
 #[derive(Default)]
 struct ReadStats {
     min: f64,
@@ -548,35 +524,44 @@ fn cmd_command(
     device: &'static SelectableDevice,
     action: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    match action {
-        Some(action) => {
-            let mut dmm = open_with_help(device)?;
-            dmm.send_command(&action)?;
-            println!("{} {action}", style("Sent").green());
-            Ok(())
-        }
-        None => {
-            // List supported commands without connecting — use the registry factory
-            let protocol = (device.new_protocol)();
-            let cmds = protocol.profile().supported_commands;
-            if cmds.is_empty() {
-                eprintln!(
-                    "{} No remote commands implemented yet for {}.",
-                    style("Note:").yellow(),
-                    protocol.profile().model_name,
-                );
-            } else {
-                println!(
-                    "Available commands for {}:",
-                    style(protocol.profile().model_name).bold()
-                );
-                for cmd in cmds {
-                    println!("  {cmd}");
-                }
-            }
-            Ok(())
+    let action = match action {
+        Some(a) => a,
+        None => return print_available_commands(device),
+    };
+
+    if device.requires_hardware {
+        let mut dmm = open_with_help(device)?;
+        dmm.send_command(&action)?;
+    } else {
+        let mut dmm = ut61eplus_lib::mock::open_mock()?;
+        dmm.send_command(&action)?;
+    }
+    println!("{} {action}", style("Sent").green());
+    Ok(())
+}
+
+/// Print supported commands for a device without connecting.
+fn print_available_commands(
+    device: &'static SelectableDevice,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let protocol = (device.new_protocol)();
+    let profile = protocol.profile();
+    if profile.supported_commands.is_empty() {
+        eprintln!(
+            "{} No remote commands implemented yet for {}.",
+            style("Note:").yellow(),
+            profile.model_name,
+        );
+    } else {
+        println!(
+            "Available commands for {}:",
+            style(profile.model_name).bold()
+        );
+        for cmd in profile.supported_commands {
+            println!("  {cmd}");
         }
     }
+    Ok(())
 }
 
 fn cmd_debug(
