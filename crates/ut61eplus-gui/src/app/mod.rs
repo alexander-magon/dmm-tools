@@ -20,6 +20,47 @@ use crate::theme::ThemeColors;
 
 use connection::{DmmMessage, handle_thread_panic, run_device_thread};
 
+/// Pre-formatted min/max/avg/count strings for a single stats group.
+struct FormattedStatsGroup {
+    min: String,
+    max: String,
+    avg: String,
+    count: usize,
+}
+
+/// Pre-formatted statistics for the stats section, shared by both layout modes.
+struct FormattedStats {
+    min: String,
+    max: String,
+    avg: String,
+    count: u64,
+    /// Visible-window stats, if available.
+    visible: Option<FormattedStatsGroup>,
+}
+
+impl FormattedStats {
+    fn new(stats: &Stats, visible: Option<(f64, f64, f64, usize)>, unit: &str) -> Self {
+        let fmt = |v: Option<f64>| -> String {
+            match v {
+                Some(val) => format!("{val:>10.4} {unit}"),
+                None => format!("{:>10} {unit}", "---"),
+            }
+        };
+        Self {
+            min: fmt(stats.min),
+            max: fmt(stats.max),
+            avg: fmt(stats.avg()),
+            count: stats.count,
+            visible: visible.map(|(vmin, vmax, vavg, vcount)| FormattedStatsGroup {
+                min: fmt(Some(vmin)),
+                max: fmt(Some(vmax)),
+                avg: fmt(Some(vavg)),
+                count: vcount,
+            }),
+        }
+    }
+}
+
 /// Connection state.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum ConnectionState {
@@ -506,33 +547,23 @@ impl App {
     }
 
     fn show_stats_section(&mut self, ui: &mut Ui, compact: bool, scale: f32) {
-        let unit = self
-            .last_measurement
-            .as_ref()
-            .map(|m| &*m.unit)
-            .unwrap_or("");
+        let formatted = FormattedStats::new(
+            &self.stats,
+            self.graph.visible_stats(),
+            self.last_measurement
+                .as_ref()
+                .map(|m| &*m.unit)
+                .unwrap_or(""),
+        );
         let main_font = 12.0 * scale;
         let sub_font = 11.0 * scale;
-
-        let fmt = |v: Option<f64>| -> String {
-            match v {
-                Some(val) => format!("{val:>10.4} {unit}"),
-                None => format!("{:>10} {unit}", "---"),
-            }
-        };
-
-        // Visible window stats (from graph)
-        let vis = self.graph.visible_stats();
 
         if compact {
             ui.horizontal_wrapped(|ui| {
                 ui.label(
                     RichText::new(format!(
                         "Min:{}  Max:{}  Avg:{}  ({})",
-                        fmt(self.stats.min),
-                        fmt(self.stats.max),
-                        fmt(self.stats.avg()),
-                        self.stats.count,
+                        formatted.min, formatted.max, formatted.avg, formatted.count,
                     ))
                     .font(egui::FontId::monospace(main_font)),
                 );
@@ -546,14 +577,11 @@ impl App {
                 }
             });
 
-            if let Some((vmin, vmax, vavg, vcount)) = vis {
+            if let Some(vis) = &formatted.visible {
                 ui.label(
                     RichText::new(format!(
                         "Visible: Min:{} Max:{} Avg:{} ({})",
-                        fmt(Some(vmin)),
-                        fmt(Some(vmax)),
-                        fmt(Some(vavg)),
-                        vcount,
+                        vis.min, vis.max, vis.avg, vis.count,
                     ))
                     .font(egui::FontId::monospace(sub_font))
                     .color(ui.visuals().weak_text_color()),
@@ -566,19 +594,19 @@ impl App {
                     .font(egui::FontId::proportional(sub_font)),
             );
             ui.label(
-                RichText::new(format!("Min:{}", fmt(self.stats.min)))
+                RichText::new(format!("Min:{}", formatted.min))
                     .font(egui::FontId::monospace(main_font)),
             );
             ui.label(
-                RichText::new(format!("Max:{}", fmt(self.stats.max)))
+                RichText::new(format!("Max:{}", formatted.max))
                     .font(egui::FontId::monospace(main_font)),
             );
             ui.label(
-                RichText::new(format!("Avg:{}", fmt(self.stats.avg())))
+                RichText::new(format!("Avg:{}", formatted.avg))
                     .font(egui::FontId::monospace(main_font)),
             );
             ui.label(
-                RichText::new(format!("Count: {}", self.stats.count))
+                RichText::new(format!("Count: {}", formatted.count))
                     .font(egui::FontId::proportional(main_font)),
             );
             if ui
@@ -591,7 +619,7 @@ impl App {
             }
 
             // Windowed stats for visible graph interval
-            if let Some((vmin, vmax, vavg, vcount)) = vis {
+            if let Some(vis) = &formatted.visible {
                 ui.add_space(4.0);
                 let weak = ui.visuals().weak_text_color();
                 ui.label(
@@ -601,22 +629,22 @@ impl App {
                         .color(weak),
                 );
                 ui.label(
-                    RichText::new(format!("Min:{}", fmt(Some(vmin))))
+                    RichText::new(format!("Min:{}", vis.min))
                         .font(egui::FontId::monospace(sub_font))
                         .color(weak),
                 );
                 ui.label(
-                    RichText::new(format!("Max:{}", fmt(Some(vmax))))
+                    RichText::new(format!("Max:{}", vis.max))
                         .font(egui::FontId::monospace(sub_font))
                         .color(weak),
                 );
                 ui.label(
-                    RichText::new(format!("Avg:{}", fmt(Some(vavg))))
+                    RichText::new(format!("Avg:{}", vis.avg))
                         .font(egui::FontId::monospace(sub_font))
                         .color(weak),
                 );
                 ui.label(
-                    RichText::new(format!("Count: {vcount}"))
+                    RichText::new(format!("Count: {}", vis.count))
                         .font(egui::FontId::proportional(sub_font))
                         .color(weak),
                 );
