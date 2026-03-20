@@ -1,13 +1,14 @@
+mod connection;
+mod controls;
+
 use eframe::egui::{self, RichText, Ui};
-use log::{error, info, warn};
+use log::{error, info};
 use std::sync::mpsc;
 use std::time::Instant;
 use ut61eplus_lib::measurement::{MeasuredValue, Measurement};
 use ut61eplus_lib::mock::MockMode;
-use ut61eplus_lib::protocol::Stability;
 use ut61eplus_lib::protocol::registry;
 use ut61eplus_lib::protocol::ut61eplus::tables::{ModeSpecInfo, SpecInfo};
-use ut61eplus_lib::transport::Transport;
 
 use crate::display;
 use crate::graph::Graph;
@@ -17,49 +18,37 @@ use crate::specs;
 use crate::stats::Stats;
 use crate::theme::ThemeColors;
 
-/// Messages from the background thread to the UI.
-pub enum DmmMessage {
-    Measurement(Measurement),
-    Connected {
-        name: String,
-        experimental: bool,
-        supported_commands: Vec<String>,
-    },
-    Disconnected(String),
-    Error(String),
-    /// Waiting for meter response (consecutive timeout count).
-    WaitingForMeter(u32),
-}
+use connection::{DmmMessage, handle_thread_panic, run_device_thread};
 
 /// Connection state.
 #[derive(Debug, Clone, PartialEq)]
-enum ConnectionState {
+pub(super) enum ConnectionState {
     Disconnected,
     Connected,
     Reconnecting,
 }
 
 pub struct App {
-    settings: Settings,
-    settings_open: bool,
+    pub(super) settings: Settings,
+    pub(super) settings_open: bool,
 
-    connection_state: ConnectionState,
-    device_name: Option<String>,
+    pub(super) connection_state: ConnectionState,
+    pub(super) device_name: Option<String>,
     /// Whether the connected protocol is experimental (unverified).
-    experimental: bool,
+    pub(super) experimental: bool,
     /// Commands supported by the connected protocol.
-    supported_commands: Vec<String>,
+    pub(super) supported_commands: Vec<String>,
     /// When true, incoming measurements are ignored (connection stays alive).
-    paused: bool,
-    last_error: Option<String>,
+    pub(super) paused: bool,
+    pub(super) last_error: Option<String>,
     /// Consecutive timeout count (0 = not waiting).
-    waiting_timeouts: u32,
-    last_measurement: Option<Measurement>,
+    pub(super) waiting_timeouts: u32,
+    pub(super) last_measurement: Option<Measurement>,
 
     /// Cached per-range spec for current measurement (avoids lookup per frame).
-    cached_spec: Option<&'static SpecInfo>,
+    pub(super) cached_spec: Option<&'static SpecInfo>,
     /// Cached per-mode spec for current measurement.
-    cached_mode_spec: Option<&'static ModeSpecInfo>,
+    pub(super) cached_mode_spec: Option<&'static ModeSpecInfo>,
     /// Key used to invalidate spec cache: (mode_raw, range_raw).
     cached_spec_key: (u16, u8),
 
@@ -69,10 +58,10 @@ pub struct App {
 
     rx: Option<mpsc::Receiver<DmmMessage>>,
     stop_tx: Option<mpsc::Sender<()>>,
-    cmd_tx: Option<mpsc::Sender<String>>,
+    pub(super) cmd_tx: Option<mpsc::Sender<String>>,
     first_frame: bool,
     /// Reconnect on next frame (device selection changed while connected).
-    needs_reconnect: bool,
+    pub(super) needs_reconnect: bool,
     /// OS default pixels_per_point, captured on first frame.
     os_ppp: Option<f32>,
     /// Last applied theme (to avoid re-setting every frame).
@@ -87,144 +76,6 @@ pub struct App {
     meter_content_height: f32,
     /// Last window size used to compute big meter scale (recompute on change).
     meter_last_size: (u32, u32),
-}
-
-/// Run the measurement loop on a background thread, generic over transport type.
-fn run_device_thread<T, F>(
-    open_fn: F,
-    msg_tx: mpsc::Sender<DmmMessage>,
-    stop_rx: mpsc::Receiver<()>,
-    cmd_rx: mpsc::Receiver<String>,
-    ctx: egui::Context,
-    query_name: bool,
-    sample_interval_ms: u32,
-) where
-    T: Transport + Send + 'static,
-    F: Fn() -> ut61eplus_lib::error::Result<ut61eplus_lib::Dmm<T>> + Send + 'static,
-{
-    info!("background thread: connecting to device");
-    let mut dmm = match open_fn() {
-        Ok(mut d) => {
-            let profile = d.profile();
-            let experimental = profile.stability == Stability::Experimental;
-            let cmds: Vec<String> = profile
-                .supported_commands
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            let name = if query_name {
-                d.get_name().ok().flatten().unwrap_or_default()
-            } else {
-                String::new()
-            };
-            let _ = msg_tx.send(DmmMessage::Connected {
-                name,
-                experimental,
-                supported_commands: cmds,
-            });
-            ctx.request_repaint();
-            d
-        }
-        Err(e) => {
-            let _ = msg_tx.send(DmmMessage::Error(e.to_string()));
-            ctx.request_repaint();
-            return;
-        }
-    };
-
-    let mut consecutive_timeouts: u32 = 0;
-    loop {
-        if stop_rx.try_recv().is_ok() {
-            info!("background thread: stop signal received");
-            break;
-        }
-
-        // Process any pending remote commands
-        while let Ok(cmd) = cmd_rx.try_recv() {
-            if let Err(e) = dmm.send_command(&cmd) {
-                warn!("background thread: command failed: {e}");
-            }
-        }
-
-        match dmm.request_measurement() {
-            Ok(m) => {
-                consecutive_timeouts = 0;
-                if msg_tx.send(DmmMessage::Measurement(m)).is_err() {
-                    break;
-                }
-            }
-            Err(ut61eplus_lib::error::Error::Timeout) => {
-                consecutive_timeouts += 1;
-                warn!("background thread: measurement timeout ({consecutive_timeouts})");
-                let _ = msg_tx.send(DmmMessage::WaitingForMeter(consecutive_timeouts));
-                ctx.request_repaint();
-                if consecutive_timeouts == 5 {
-                    let _ = msg_tx.send(DmmMessage::Error(
-                        "No response from meter \u{2014} check device selection and USB mode"
-                            .to_string(),
-                    ));
-                    ctx.request_repaint();
-                }
-            }
-            Err(e) => {
-                error!("background thread: device error: {e}");
-                let _ = msg_tx.send(DmmMessage::Disconnected(e.to_string()));
-                ctx.request_repaint();
-
-                // Reconnection loop
-                loop {
-                    if stop_rx.try_recv().is_ok() {
-                        return;
-                    }
-                    std::thread::sleep(std::time::Duration::from_secs(2));
-                    match open_fn() {
-                        Ok(mut d) => {
-                            let p = d.profile();
-                            let exp = p.stability == Stability::Experimental;
-                            let cmds: Vec<String> =
-                                p.supported_commands.iter().map(|s| s.to_string()).collect();
-                            let name = if query_name {
-                                d.get_name().ok().flatten().unwrap_or_default()
-                            } else {
-                                String::new()
-                            };
-                            dmm = d;
-                            let _ = msg_tx.send(DmmMessage::Connected {
-                                name,
-                                experimental: exp,
-                                supported_commands: cmds,
-                            });
-                            ctx.request_repaint();
-                            break;
-                        }
-                        Err(_) => continue,
-                    }
-                }
-            }
-        }
-
-        ctx.request_repaint();
-        if sample_interval_ms > 0 {
-            std::thread::sleep(std::time::Duration::from_millis(sample_interval_ms as u64));
-        }
-    }
-}
-
-fn handle_thread_panic(
-    panic: Box<dyn std::any::Any + Send>,
-    tx: &mpsc::Sender<DmmMessage>,
-    ctx: &egui::Context,
-) {
-    let msg = if let Some(s) = panic.downcast_ref::<&str>() {
-        s.to_string()
-    } else if let Some(s) = panic.downcast_ref::<String>() {
-        s.clone()
-    } else {
-        "unknown panic".to_string()
-    };
-    error!("background thread panicked: {msg}");
-    let _ = tx.send(DmmMessage::Error(format!("internal error: {msg}")));
-    ctx.request_repaint();
 }
 
 impl App {
@@ -276,7 +127,7 @@ impl App {
         }
     }
 
-    const ZOOM_LEVELS: &[u32] = &[
+    pub(super) const ZOOM_LEVELS: &[u32] = &[
         30, 50, 67, 80, 90, 100, 110, 120, 133, 150, 170, 200, 240, 300,
     ];
 
@@ -493,68 +344,10 @@ impl App {
         }
     }
 
-    fn send_command(&self, cmd: &str) {
+    pub(super) fn send_command(&self, cmd: &str) {
         if let Some(tx) = &self.cmd_tx {
             let _ = tx.send(cmd.to_string());
         }
-    }
-
-    fn show_remote_controls(&mut self, ui: &mut Ui, scale: f32) {
-        // Only show controls when connected with measurement data and supported commands
-        if self.connection_state != ConnectionState::Connected
-            || self.last_measurement.is_none()
-            || self.supported_commands.is_empty()
-        {
-            return;
-        }
-        let flags = self.last_measurement.as_ref().map(|m| m.flags);
-        let has_cmd = |cmd: &str| self.supported_commands.iter().any(|c| c == cmd);
-        let tc = ThemeColors::new(ui.visuals().dark_mode);
-        let active_color = tc.blue_accent();
-
-        let font_size = 12.0 * scale;
-
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 3.0 * scale;
-
-            let hold = flags.is_some_and(|f| f.hold);
-            let rel = flags.is_some_and(|f| f.rel);
-            let manual_range = flags.is_some_and(|f| !f.auto_range);
-            let auto = flags.is_some_and(|f| f.auto_range);
-            let min_max = flags.is_some_and(|f| f.min || f.max);
-            let peak = flags.is_some_and(|f| f.peak_min || f.peak_max);
-
-            // Commands that toggle: label, active flag, enter command, exit command.
-            // Hold/rel are protocol-level toggles (same command enters and exits).
-            // Min/Max and Peak have separate enter/exit wire commands — send the
-            // right one based on current flag state.
-            for &(label, active, enter_cmd, exit_cmd) in &[
-                ("HOLD", hold, "hold", "hold"),
-                ("REL", rel, "rel", "rel"),
-                ("RANGE", manual_range, "range", "range"),
-                ("AUTO", auto, "auto", "auto"),
-                ("MIN/MAX", min_max, "minmax", "exit_minmax"),
-                ("PEAK", peak, "peak", "exit_peak"),
-                ("SELECT", false, "select", "select"),
-                ("LIGHT", false, "light", "light"),
-            ] {
-                if !has_cmd(enter_cmd) {
-                    continue;
-                }
-                let text = if active {
-                    RichText::new(label)
-                        .font(egui::FontId::proportional(font_size))
-                        .color(active_color)
-                        .strong()
-                } else {
-                    RichText::new(label).font(egui::FontId::proportional(font_size))
-                };
-                if ui.add(egui::Button::new(text)).clicked() {
-                    let cmd = if active { exit_cmd } else { enter_cmd };
-                    self.send_command(cmd);
-                }
-            }
-        });
     }
 
     fn show_connection_help(&self, ui: &mut Ui) {
@@ -710,192 +503,6 @@ impl App {
                 }
             });
         });
-    }
-
-    fn show_settings_panel(&mut self, ui: &mut Ui) {
-        if !self.settings_open {
-            return;
-        }
-
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Theme:");
-            let mut changed = false;
-            for mode in [ThemeMode::Dark, ThemeMode::Light] {
-                let label = match mode {
-                    ThemeMode::Dark => "Dark",
-                    ThemeMode::Light => "Light",
-                    ThemeMode::System => "System",
-                };
-                if ui
-                    .selectable_label(self.settings.theme == mode, label)
-                    .clicked()
-                {
-                    self.settings.theme = mode;
-                    changed = true;
-                }
-            }
-            if changed {
-                self.settings.save();
-            }
-        });
-
-        ui.horizontal(|ui| {
-            let mut changed = false;
-            if ui
-                .checkbox(&mut self.settings.show_graph, "Graph")
-                .changed()
-            {
-                changed = true;
-            }
-            if ui
-                .checkbox(&mut self.settings.show_stats, "Statistics")
-                .changed()
-            {
-                changed = true;
-            }
-            if ui
-                .checkbox(&mut self.settings.show_recording, "Recording")
-                .changed()
-            {
-                changed = true;
-            }
-            if ui
-                .checkbox(&mut self.settings.show_specs, "Specifications")
-                .changed()
-            {
-                changed = true;
-            }
-            if changed {
-                self.settings.save();
-            }
-        });
-
-        ui.horizontal(|ui| {
-            let mut changed = false;
-            if ui
-                .checkbox(&mut self.settings.auto_connect, "Auto-connect on start")
-                .changed()
-            {
-                changed = true;
-            }
-            if ui
-                .checkbox(
-                    &mut self.settings.query_device_name,
-                    "Show device name on connect (beeps)",
-                )
-                .changed()
-            {
-                changed = true;
-            }
-            if changed {
-                self.settings.save();
-            }
-        });
-
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Sample interval:");
-            let mut changed = false;
-            for &ms in &[0u32, 100, 200, 300, 500, 1000, 2000] {
-                let label = format!("{ms}ms");
-                if ui
-                    .selectable_label(self.settings.sample_interval_ms == ms, label)
-                    .clicked()
-                {
-                    self.settings.sample_interval_ms = ms;
-                    changed = true;
-                }
-            }
-            if changed {
-                self.settings.save();
-            }
-            ui.label(
-                RichText::new("(requires reconnect)")
-                    .small()
-                    .color(ui.visuals().weak_text_color()),
-            );
-        });
-
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Device:");
-            let mut changed = false;
-            for device in registry::DEVICES {
-                if ui
-                    .selectable_label(
-                        self.settings.device_family == device.id,
-                        device.display_name,
-                    )
-                    .clicked()
-                {
-                    self.settings.device_family = device.id.to_string();
-                    changed = true;
-                }
-            }
-            if changed {
-                self.settings.save();
-                // Auto-reconnect if currently connected
-                if self.connection_state != ConnectionState::Disconnected {
-                    self.needs_reconnect = true;
-                }
-            }
-        });
-
-        // Mock mode selector (only shown when mock device is selected)
-        if registry::find_device(&self.settings.device_family).is_some_and(|d| d.id == "mock") {
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Mock mode:");
-                let mut changed = false;
-                // "Auto" = cycle through all modes
-                if ui
-                    .selectable_label(self.settings.mock_mode.is_empty(), "Auto (cycle)")
-                    .clicked()
-                {
-                    self.settings.mock_mode = String::new();
-                    changed = true;
-                }
-                for mode in MockMode::ALL {
-                    let label = mode.label();
-                    if ui
-                        .selectable_label(self.settings.mock_mode == label, label)
-                        .on_hover_text(mode.description())
-                        .clicked()
-                    {
-                        self.settings.mock_mode = label.to_string();
-                        changed = true;
-                    }
-                }
-                if changed {
-                    self.settings.save();
-                    if self.connection_state != ConnectionState::Disconnected {
-                        self.needs_reconnect = true;
-                    }
-                }
-            });
-        }
-
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Zoom:");
-            let mut changed = false;
-            for &level in Self::ZOOM_LEVELS {
-                if ui
-                    .selectable_label(self.settings.zoom_pct == level, format!("{level}%"))
-                    .clicked()
-                {
-                    self.settings.zoom_pct = level;
-                    changed = true;
-                }
-            }
-            if changed {
-                self.settings.save();
-            }
-            ui.label(
-                RichText::new("(Ctrl+/- to adjust, Ctrl+0 = 100%)")
-                    .small()
-                    .color(ui.visuals().weak_text_color()),
-            );
-        });
-
-        ui.separator();
     }
 
     fn show_stats_section(&mut self, ui: &mut Ui, compact: bool, scale: f32) {
