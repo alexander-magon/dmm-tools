@@ -444,7 +444,7 @@ fn run_read_loop<T: ut61eplus_lib::transport::Transport>(
     }
 
     let interval = Duration::from_millis(interval_ms);
-    let mut stats = ReadStats::default();
+    let mut stats = ut61eplus_lib::stats::RunningStats::default();
     let mut i = 0usize;
     let mut consecutive_timeouts: u32 = 0;
 
@@ -490,34 +490,12 @@ fn run_read_loop<T: ut61eplus_lib::transport::Transport>(
             "\n{} {} samples | Min: {} | Max: {} | Avg: {}",
             style("---").dim(),
             stats.count,
-            style(format!("{:.4}", stats.min)).cyan(),
-            style(format!("{:.4}", stats.max)).cyan(),
-            style(format!("{:.4}", stats.sum / stats.count as f64)).cyan(),
+            style(format!("{:.4}", stats.min.unwrap())).cyan(),
+            style(format!("{:.4}", stats.max.unwrap())).cyan(),
+            style(format!("{:.4}", stats.avg().unwrap())).cyan(),
         );
     }
     Ok(())
-}
-
-#[derive(Default)]
-struct ReadStats {
-    min: f64,
-    max: f64,
-    sum: f64,
-    count: u64,
-}
-
-impl ReadStats {
-    fn push(&mut self, v: f64) {
-        if self.count == 0 {
-            self.min = v;
-            self.max = v;
-        } else {
-            self.min = self.min.min(v);
-            self.max = self.max.max(v);
-        }
-        self.sum += v;
-        self.count += 1;
-    }
 }
 
 fn cmd_command(

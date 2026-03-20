@@ -4,6 +4,7 @@ pub mod flags;
 pub mod measurement;
 pub mod mock;
 pub mod protocol;
+pub mod stats;
 pub mod transport;
 
 use error::{Error, Result};

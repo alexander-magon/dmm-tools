@@ -4,7 +4,6 @@ mod graph;
 mod recording;
 mod settings;
 mod specs;
-mod stats;
 mod theme;
 
 /// Version string for the app (shown in top bar, right side).

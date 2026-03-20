@@ -15,8 +15,8 @@ use crate::graph::Graph;
 use crate::recording::Recording;
 use crate::settings::{Settings, ThemeMode};
 use crate::specs;
-use crate::stats::Stats;
 use crate::theme::ThemeColors;
+use ut61eplus_lib::stats::RunningStats;
 
 use connection::{DmmMessage, handle_thread_panic, run_device_thread};
 
@@ -39,7 +39,7 @@ struct FormattedStats {
 }
 
 impl FormattedStats {
-    fn new(stats: &Stats, visible: Option<(f64, f64, f64, usize)>, unit: &str) -> Self {
+    fn new(stats: &RunningStats, visible: Option<(f64, f64, f64, usize)>, unit: &str) -> Self {
         let fmt = |v: Option<f64>| -> String {
             match v {
                 Some(val) => format!("{val:>10.4} {unit}"),
@@ -94,7 +94,7 @@ pub struct App {
     cached_spec_key: (u16, u8),
 
     graph: Graph,
-    stats: Stats,
+    stats: RunningStats,
     recording: Recording,
 
     rx: Option<mpsc::Receiver<DmmMessage>>,
@@ -137,7 +137,7 @@ impl App {
             cached_mode_spec: None,
             cached_spec_key: (u16::MAX, u8::MAX),
             graph: Graph::new(),
-            stats: Stats::new(),
+            stats: RunningStats::new(),
             recording: Recording::new(),
             rx: None,
             stop_tx: None,
