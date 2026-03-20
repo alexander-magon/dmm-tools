@@ -70,7 +70,7 @@ pub fn show_specs(
     } else {
         ui.label(RichText::new("Accuracy").font(egui::FontId::proportional(main_font)));
         for band in spec.accuracy {
-            let freq = band.freq_range.unwrap_or("???");
+            let freq = band.freq_range.unwrap_or(crate::NO_DATA);
             ui.label(
                 RichText::new(format!("  {freq}  \u{00B1}({})", band.accuracy))
                     .font(egui::FontId::proportional(sub_font))

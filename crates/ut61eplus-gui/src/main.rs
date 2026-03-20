@@ -6,6 +6,9 @@ mod settings;
 mod specs;
 mod theme;
 
+/// Placeholder string for missing/unavailable data values in the UI.
+pub(crate) const NO_DATA: &str = "---";
+
 /// Version string for the app (shown in top bar, right side).
 pub fn version_label() -> String {
     let version = env!("CARGO_PKG_VERSION");

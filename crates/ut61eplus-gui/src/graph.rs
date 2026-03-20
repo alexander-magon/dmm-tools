@@ -467,7 +467,7 @@ impl Graph {
                     let vb = self.nearest_point(tb).map(|(_, v)| v);
                     let dv = match (va, vb) {
                         (Some(a), Some(b)) => format!("{:.4}", (b - a).abs()),
-                        _ => "---".to_string(),
+                        _ => crate::NO_DATA.to_string(),
                     };
                     let unit = &self.current_unit;
                     let delta_color = ThemeColors::new(dark).graph_cursor_delta();

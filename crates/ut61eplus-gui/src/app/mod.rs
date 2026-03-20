@@ -59,7 +59,7 @@ impl FormattedStats {
         let fmt = |v: Option<f64>| -> String {
             match v {
                 Some(val) => format!("{val:>10.4} {unit}"),
-                None => format!("{:>10} {unit}", "---"),
+                None => format!("{:>10} {unit}", crate::NO_DATA),
             }
         };
         Self {

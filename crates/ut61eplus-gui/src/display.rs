@@ -84,7 +84,7 @@ fn show_reading_sized(ui: &mut Ui, measurement: Option<&Measurement>, value_size
         }
         None => {
             ui.label(
-                RichText::new("---")
+                RichText::new(crate::NO_DATA)
                     .font(FontId::monospace(value_size))
                     .color(ui.visuals().weak_text_color()),
             );
@@ -156,7 +156,7 @@ pub fn show_reading_compact(ui: &mut Ui, measurement: Option<&Measurement>) {
         }
         None => {
             ui.label(
-                RichText::new("--- No reading")
+                RichText::new(format!("{} No reading", crate::NO_DATA))
                     .font(FontId::monospace(COMPACT_READING_FONT_SIZE))
                     .color(ui.visuals().weak_text_color()),
             );
