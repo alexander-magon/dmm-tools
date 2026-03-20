@@ -17,10 +17,10 @@
 use crate::error::{Error, Result};
 use crate::flags::StatusFlags;
 use crate::measurement::{MeasuredValue, Measurement};
-use crate::protocol::framing;
+use crate::protocol::framing::{self, FrameErrorRecovery};
 use crate::protocol::{DeviceProfile, Protocol, Stability};
 use crate::transport::Transport;
-use log::{debug, warn};
+use log::debug;
 use std::time::Instant;
 
 /// Decode a UT181A mode word (uint16 LE) into a human-readable string.
@@ -168,43 +168,16 @@ impl Protocol for Ut181aProtocol {
     }
 
     fn request_measurement(&mut self, transport: &dyn Transport) -> Result<Measurement> {
-        const READ_TIMEOUT_MS: i32 = 2000;
-        const MAX_ATTEMPTS: usize = 64;
-
-        for _ in 0..MAX_ATTEMPTS {
-            // UT181A length includes checksum
-            match framing::extract_frame_abcd_2byte_le16(&self.rx_buf) {
-                Ok(Some((payload, consumed))) => {
-                    self.rx_buf.drain(..consumed);
-                    // Only process measurement frames (type 0x02)
-                    if !payload.is_empty() && payload[0] == 0x02 {
-                        return parse_measurement(&payload);
-                    }
-                    debug!(
-                        "ut181a: skipping non-measurement packet, type={:#04x}",
-                        payload.first().copied().unwrap_or(0)
-                    );
-                }
-                Ok(None) => {
-                    let mut tmp = [0u8; 64];
-                    let n = transport.read_timeout(&mut tmp, READ_TIMEOUT_MS)?;
-                    if n == 0 {
-                        return Err(Error::Timeout);
-                    }
-                    self.rx_buf.extend_from_slice(&tmp[..n]);
-                }
-                Err(e) => {
-                    warn!("ut181a: frame error: {e}, skipping");
-                    if let Some(pos) = self.rx_buf.windows(2).position(|w| w == framing::HEADER) {
-                        self.rx_buf.drain(..pos + 2);
-                    } else {
-                        self.rx_buf.clear();
-                    }
-                }
-            }
-        }
-
-        Err(Error::Timeout)
+        let payload = framing::read_frame(
+            &mut self.rx_buf,
+            transport,
+            framing::extract_frame_abcd_2byte_le16,
+            // Only accept measurement frames (type 0x02)
+            |p| !p.is_empty() && p[0] == 0x02,
+            FrameErrorRecovery::SkipAndRetry,
+            "ut181a",
+        )?;
+        parse_measurement(&payload)
     }
 
     fn send_command(&mut self, transport: &dyn Transport, command: &str) -> Result<()> {

@@ -1,7 +1,82 @@
-//! Shared frame extraction functions for protocols using ABCD headers.
+//! Shared frame extraction and read-loop functions for protocols using ABCD headers.
 
 use crate::error::{Error, Result};
-use log::{debug, trace};
+use crate::transport::Transport;
+use log::{debug, trace, warn};
+
+/// How to handle frame extraction errors (checksum mismatches).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FrameErrorRecovery {
+    /// Propagate the error immediately (UT61E+ behavior).
+    Propagate,
+    /// Skip past the current ABCD header and retry (UT8803/UT171/UT181A behavior).
+    SkipAndRetry,
+}
+
+/// Shared read loop: extract frames from `rx_buf`, reading more data from
+/// `transport` when needed.
+///
+/// - `extract_fn`: protocol-specific frame extractor (e.g. `extract_frame_abcd_be16`).
+/// - `accept_fn`: predicate on the extracted payload. Return `true` to accept
+///   the frame, `false` to skip it and continue reading (used by UT171/UT181A
+///   to filter non-measurement frames).
+/// - `recovery`: whether to skip-and-retry on frame errors or propagate them.
+/// - `label`: protocol label for log messages (e.g. `"ut8803"`).
+///
+/// Constants match the values used by all four protocol implementations:
+/// `READ_TIMEOUT_MS = 2000`, `MAX_ATTEMPTS = 64`.
+pub(crate) fn read_frame<F, A>(
+    rx_buf: &mut Vec<u8>,
+    transport: &dyn Transport,
+    extract_fn: F,
+    accept_fn: A,
+    recovery: FrameErrorRecovery,
+    label: &str,
+) -> Result<Vec<u8>>
+where
+    F: Fn(&[u8]) -> Result<Option<(Vec<u8>, usize)>>,
+    A: Fn(&[u8]) -> bool,
+{
+    const READ_TIMEOUT_MS: i32 = 2000;
+    const MAX_ATTEMPTS: usize = 64;
+
+    for _ in 0..MAX_ATTEMPTS {
+        match extract_fn(rx_buf) {
+            Ok(Some((payload, consumed))) => {
+                rx_buf.drain(..consumed);
+                if accept_fn(&payload) {
+                    return Ok(payload);
+                }
+                debug!(
+                    "{label}: skipping non-matching frame ({} bytes): {:02X?}",
+                    payload.len(),
+                    &payload[..payload.len().min(4)]
+                );
+            }
+            Ok(None) => {
+                let mut tmp = [0u8; 64];
+                let n = transport.read_timeout(&mut tmp, READ_TIMEOUT_MS)?;
+                if n == 0 {
+                    return Err(Error::Timeout);
+                }
+                rx_buf.extend_from_slice(&tmp[..n]);
+            }
+            Err(e) => match recovery {
+                FrameErrorRecovery::Propagate => return Err(e),
+                FrameErrorRecovery::SkipAndRetry => {
+                    warn!("{label}: frame error: {e}, skipping");
+                    if let Some(pos) = rx_buf.windows(2).position(|w| w == HEADER) {
+                        rx_buf.drain(..pos + 2);
+                    } else {
+                        rx_buf.clear();
+                    }
+                }
+            },
+        }
+    }
+
+    Err(Error::Timeout)
+}
 
 /// Header bytes shared across all UNI-T protocols.
 pub const HEADER: [u8; 2] = [0xAB, 0xCD];
@@ -229,6 +304,7 @@ pub fn extract_frame_abcd_2byte_le16(buf: &[u8]) -> Result<Option<(Vec<u8>, usiz
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::mock::MockTransport;
 
     /// Build a valid UT61E+ frame from a payload.
     fn make_frame_be16(payload: &[u8]) -> Vec<u8> {
@@ -363,5 +439,159 @@ mod tests {
         let (p, consumed) = extract_frame_abcd_1byte_le16(&frame).unwrap().unwrap();
         assert_eq!(p, payload);
         assert_eq!(consumed, frame.len());
+    }
+
+    // --- read_frame tests ---
+
+    #[test]
+    fn read_frame_single_chunk() {
+        let payload = vec![0x01, 0x02, 0x03];
+        let frame = make_frame_be16(&payload);
+        let mock = MockTransport::new(vec![frame]);
+        let mut rx_buf = Vec::new();
+
+        let result = read_frame(
+            &mut rx_buf,
+            &mock,
+            extract_frame_abcd_be16,
+            |_| true,
+            FrameErrorRecovery::Propagate,
+            "test",
+        )
+        .unwrap();
+        assert_eq!(result, payload);
+        assert!(rx_buf.is_empty());
+    }
+
+    #[test]
+    fn read_frame_split_across_reads() {
+        let payload = vec![0x01, 0x02, 0x03];
+        let frame = make_frame_be16(&payload);
+        // Split the frame into two parts
+        let part1 = frame[..3].to_vec();
+        let part2 = frame[3..].to_vec();
+        let mock = MockTransport::new(vec![part1, part2]);
+        let mut rx_buf = Vec::new();
+
+        let result = read_frame(
+            &mut rx_buf,
+            &mock,
+            extract_frame_abcd_be16,
+            |_| true,
+            FrameErrorRecovery::Propagate,
+            "test",
+        )
+        .unwrap();
+        assert_eq!(result, payload);
+    }
+
+    #[test]
+    fn read_frame_timeout_when_no_data() {
+        let mock = MockTransport::new(vec![]);
+        let mut rx_buf = Vec::new();
+
+        let result = read_frame(
+            &mut rx_buf,
+            &mock,
+            extract_frame_abcd_be16,
+            |_| true,
+            FrameErrorRecovery::Propagate,
+            "test",
+        );
+        assert!(matches!(result, Err(Error::Timeout)));
+    }
+
+    #[test]
+    fn read_frame_propagate_error() {
+        // Build a frame with a corrupted checksum
+        let mut frame = make_frame_be16(&[0x01, 0x02, 0x03]);
+        let last = frame.len() - 1;
+        frame[last] ^= 0xFF;
+        let mock = MockTransport::new(vec![frame]);
+        let mut rx_buf = Vec::new();
+
+        let result = read_frame(
+            &mut rx_buf,
+            &mock,
+            extract_frame_abcd_be16,
+            |_| true,
+            FrameErrorRecovery::Propagate,
+            "test",
+        );
+        assert!(matches!(result, Err(Error::ChecksumMismatch { .. })));
+    }
+
+    #[test]
+    fn read_frame_skip_and_retry_on_error() {
+        // First frame has bad checksum, second is valid
+        let mut bad_frame = make_frame_be16(&[0x01, 0x02, 0x03]);
+        let last = bad_frame.len() - 1;
+        bad_frame[last] ^= 0xFF;
+
+        let good_payload = vec![0x04, 0x05, 0x06];
+        let good_frame = make_frame_be16(&good_payload);
+
+        // Concatenate bad + good into one response chunk so the retry finds the good frame
+        let mut combined = bad_frame;
+        combined.extend_from_slice(&good_frame);
+        let mock = MockTransport::new(vec![combined]);
+        let mut rx_buf = Vec::new();
+
+        let result = read_frame(
+            &mut rx_buf,
+            &mock,
+            extract_frame_abcd_be16,
+            |_| true,
+            FrameErrorRecovery::SkipAndRetry,
+            "test",
+        )
+        .unwrap();
+        assert_eq!(result, good_payload);
+    }
+
+    #[test]
+    fn read_frame_accept_filter_skips_non_matching() {
+        // First frame has payload starting with 0x01 (rejected), second with 0x02 (accepted)
+        let rejected_payload = vec![0x01, 0xAA, 0xBB];
+        let accepted_payload = vec![0x02, 0xCC, 0xDD];
+        let frame1 = make_frame_be16(&rejected_payload);
+        let frame2 = make_frame_be16(&accepted_payload);
+
+        let mut combined = frame1;
+        combined.extend_from_slice(&frame2);
+        let mock = MockTransport::new(vec![combined]);
+        let mut rx_buf = Vec::new();
+
+        let result = read_frame(
+            &mut rx_buf,
+            &mock,
+            extract_frame_abcd_be16,
+            |p| !p.is_empty() && p[0] == 0x02,
+            FrameErrorRecovery::Propagate,
+            "test",
+        )
+        .unwrap();
+        assert_eq!(result, accepted_payload);
+    }
+
+    #[test]
+    fn read_frame_existing_data_in_rx_buf() {
+        // Frame data is already in rx_buf before read_frame is called
+        let payload = vec![0x01, 0x02, 0x03];
+        let frame = make_frame_be16(&payload);
+        let mock = MockTransport::new(vec![]); // no transport reads needed
+        let mut rx_buf = frame;
+
+        let result = read_frame(
+            &mut rx_buf,
+            &mock,
+            extract_frame_abcd_be16,
+            |_| true,
+            FrameErrorRecovery::Propagate,
+            "test",
+        )
+        .unwrap();
+        assert_eq!(result, payload);
+        assert!(rx_buf.is_empty());
     }
 }

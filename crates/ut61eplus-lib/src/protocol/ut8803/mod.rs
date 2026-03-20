@@ -12,7 +12,7 @@
 use crate::error::{Error, Result};
 use crate::flags::StatusFlags;
 use crate::measurement::{MeasuredValue, Measurement};
-use crate::protocol::framing;
+use crate::protocol::framing::{self, FrameErrorRecovery};
 use crate::protocol::{DeviceProfile, Protocol, Stability};
 use crate::transport::Transport;
 use log::{debug, warn};
@@ -91,36 +91,15 @@ impl Protocol for Ut8803Protocol {
     }
 
     fn request_measurement(&mut self, transport: &dyn Transport) -> Result<Measurement> {
-        const READ_TIMEOUT_MS: i32 = 2000;
-        const MAX_ATTEMPTS: usize = 64;
-
-        for _ in 0..MAX_ATTEMPTS {
-            match framing::extract_frame_ut8803(&self.rx_buf) {
-                Ok(Some((payload, consumed))) => {
-                    self.rx_buf.drain(..consumed);
-                    return parse_measurement(&payload);
-                }
-                Ok(None) => {
-                    let mut tmp = [0u8; 64];
-                    let n = transport.read_timeout(&mut tmp, READ_TIMEOUT_MS)?;
-                    if n == 0 {
-                        return Err(Error::Timeout);
-                    }
-                    self.rx_buf.extend_from_slice(&tmp[..n]);
-                }
-                Err(e) => {
-                    // Checksum error — skip past the header and try again
-                    warn!("ut8803: frame error: {e}, skipping");
-                    if let Some(pos) = self.rx_buf.windows(2).position(|w| w == framing::HEADER) {
-                        self.rx_buf.drain(..pos + 2);
-                    } else {
-                        self.rx_buf.clear();
-                    }
-                }
-            }
-        }
-
-        Err(Error::Timeout)
+        let payload = framing::read_frame(
+            &mut self.rx_buf,
+            transport,
+            framing::extract_frame_ut8803,
+            |_| true,
+            FrameErrorRecovery::SkipAndRetry,
+            "ut8803",
+        )?;
+        parse_measurement(&payload)
     }
 
     fn send_command(&mut self, _transport: &dyn Transport, command: &str) -> Result<()> {

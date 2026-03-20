@@ -5,7 +5,7 @@ pub mod tables;
 use crate::error::{Error, Result};
 use crate::flags::StatusFlags;
 use crate::measurement::{MeasuredValue, Measurement};
-use crate::protocol::framing::{self, UT61EPLUS_MEASUREMENT_PAYLOAD_LEN};
+use crate::protocol::framing::{self, FrameErrorRecovery, UT61EPLUS_MEASUREMENT_PAYLOAD_LEN};
 use crate::protocol::{DeviceProfile, Protocol, Stability};
 use crate::transport::Transport;
 use command::Command;
@@ -87,27 +87,14 @@ impl Ut61PlusProtocol {
 
     /// Read a raw payload frame from the transport.
     fn read_raw_payload(&mut self, transport: &dyn Transport) -> Result<Vec<u8>> {
-        const READ_TIMEOUT_MS: i32 = 2000;
-        const MAX_ATTEMPTS: usize = 64;
-
-        for _ in 0..MAX_ATTEMPTS {
-            match framing::extract_frame_abcd_be16(&self.rx_buf)? {
-                Some((payload, consumed)) => {
-                    self.rx_buf.drain(..consumed);
-                    return Ok(payload);
-                }
-                None => {
-                    let mut tmp = [0u8; 64];
-                    let n = transport.read_timeout(&mut tmp, READ_TIMEOUT_MS)?;
-                    if n == 0 {
-                        return Err(Error::Timeout);
-                    }
-                    self.rx_buf.extend_from_slice(&tmp[..n]);
-                }
-            }
-        }
-
-        Err(Error::Timeout)
+        framing::read_frame(
+            &mut self.rx_buf,
+            transport,
+            framing::extract_frame_abcd_be16,
+            |_| true,
+            FrameErrorRecovery::Propagate,
+            "ut61eplus",
+        )
     }
 
     /// Read and parse a measurement response, skipping non-measurement frames.

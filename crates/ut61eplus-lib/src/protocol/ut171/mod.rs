@@ -15,7 +15,7 @@
 use crate::error::{Error, Result};
 use crate::flags::StatusFlags;
 use crate::measurement::{MeasuredValue, Measurement};
-use crate::protocol::framing;
+use crate::protocol::framing::{self, FrameErrorRecovery};
 use crate::protocol::{DeviceProfile, Protocol, Stability};
 use crate::transport::Transport;
 use log::{debug, warn};
@@ -129,43 +129,16 @@ impl Protocol for Ut171Protocol {
     }
 
     fn request_measurement(&mut self, transport: &dyn Transport) -> Result<Measurement> {
-        const READ_TIMEOUT_MS: i32 = 2000;
-        const MAX_ATTEMPTS: usize = 64;
-
-        for _ in 0..MAX_ATTEMPTS {
-            // UT171 length does NOT include checksum
-            match framing::extract_frame_abcd_1byte_le16(&self.rx_buf) {
-                Ok(Some((payload, consumed))) => {
-                    self.rx_buf.drain(..consumed);
-                    // Only process measurement frames (type byte = 0x02 at payload[1])
-                    if payload.len() >= 2 && payload[1] == 0x02 {
-                        return parse_measurement(&payload);
-                    }
-                    debug!(
-                        "ut171: skipping non-measurement frame, type={:#04x}",
-                        payload.get(1).copied().unwrap_or(0)
-                    );
-                }
-                Ok(None) => {
-                    let mut tmp = [0u8; 64];
-                    let n = transport.read_timeout(&mut tmp, READ_TIMEOUT_MS)?;
-                    if n == 0 {
-                        return Err(Error::Timeout);
-                    }
-                    self.rx_buf.extend_from_slice(&tmp[..n]);
-                }
-                Err(e) => {
-                    warn!("ut171: frame error: {e}, skipping");
-                    if let Some(pos) = self.rx_buf.windows(2).position(|w| w == framing::HEADER) {
-                        self.rx_buf.drain(..pos + 2);
-                    } else {
-                        self.rx_buf.clear();
-                    }
-                }
-            }
-        }
-
-        Err(Error::Timeout)
+        let payload = framing::read_frame(
+            &mut self.rx_buf,
+            transport,
+            framing::extract_frame_abcd_1byte_le16,
+            // Only accept measurement frames (type byte = 0x02 at payload[1])
+            |p| p.len() >= 2 && p[1] == 0x02,
+            FrameErrorRecovery::SkipAndRetry,
+            "ut171",
+        )?;
+        parse_measurement(&payload)
     }
 
     fn send_command(&mut self, transport: &dyn Transport, command: &str) -> Result<()> {
