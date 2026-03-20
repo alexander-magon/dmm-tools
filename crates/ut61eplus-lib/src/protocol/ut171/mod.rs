@@ -22,51 +22,48 @@ use log::{debug, warn};
 use std::borrow::Cow;
 use std::time::Instant;
 
-/// Mode byte → (name, unit) mapping from Ghidra analysis.
-const MODE_TABLE: &[(u8, &str, &str)] = &[
-    (0x01, "LoZ V~", "V"),
-    (0x02, "V DC", "V"),
-    (0x03, "V AC", "V"),
-    (0x04, "V AC+DC", "V"),
-    (0x05, "mV DC", "mV"),
-    (0x06, "mV AC", "mV"),
-    (0x07, "mV AC+DC", "mV"),
-    (0x08, "Continuity", "Ω"),
-    (0x09, "Capacitance", "F"),
-    (0x0A, "Ω", "Ω"),
-    (0x0B, "Diode", "V"),
-    (0x0C, "°C", "°C"),
-    (0x0D, "°F", "°F"),
-    (0x0E, "nS", "nS"),
-    (0x0F, "Hz", "Hz"),
-    (0x10, "Duty %", "%"),
-    (0x11, "µA DC", "µA"),
-    (0x12, "µA AC", "µA"),
-    (0x13, "µA AC+DC", "µA"),
-    (0x14, "mA DC", "mA"),
-    (0x15, "mA AC", "mA"),
-    (0x16, "mA AC+DC", "mA"),
-    (0x17, "A DC", "A"),
-    (0x18, "A AC", "A"),
-    (0x19, "A AC+DC", "A"),
-    (0x1A, "VFC", "V"),
-    (0x1B, "% 4-20mA", "%"),
-    (0x1C, "600A DC", "A"),
-    (0x1D, "600A AC", "A"),
-    (0x24, "NCV", ""),
-];
-
 /// Look up mode name and unit from mode byte.
 /// Returns `(Cow::Borrowed(name), unit)` for known modes,
 /// or `(Cow::Owned("Unknown(0xNN)"), "")` for unknown bytes.
+///
+/// Mode byte values from Ghidra analysis of UT171C.exe.
 fn lookup_mode(byte: u8) -> (Cow<'static, str>, &'static str) {
-    for &(code, name, unit) in MODE_TABLE {
-        if code == byte {
-            return (Cow::Borrowed(name), unit);
+    match byte {
+        0x01 => (Cow::Borrowed("LoZ V~"), "V"),
+        0x02 => (Cow::Borrowed("V DC"), "V"),
+        0x03 => (Cow::Borrowed("V AC"), "V"),
+        0x04 => (Cow::Borrowed("V AC+DC"), "V"),
+        0x05 => (Cow::Borrowed("mV DC"), "mV"),
+        0x06 => (Cow::Borrowed("mV AC"), "mV"),
+        0x07 => (Cow::Borrowed("mV AC+DC"), "mV"),
+        0x08 => (Cow::Borrowed("Continuity"), "Ω"),
+        0x09 => (Cow::Borrowed("Capacitance"), "F"),
+        0x0A => (Cow::Borrowed("Ω"), "Ω"),
+        0x0B => (Cow::Borrowed("Diode"), "V"),
+        0x0C => (Cow::Borrowed("°C"), "°C"),
+        0x0D => (Cow::Borrowed("°F"), "°F"),
+        0x0E => (Cow::Borrowed("nS"), "nS"),
+        0x0F => (Cow::Borrowed("Hz"), "Hz"),
+        0x10 => (Cow::Borrowed("Duty %"), "%"),
+        0x11 => (Cow::Borrowed("µA DC"), "µA"),
+        0x12 => (Cow::Borrowed("µA AC"), "µA"),
+        0x13 => (Cow::Borrowed("µA AC+DC"), "µA"),
+        0x14 => (Cow::Borrowed("mA DC"), "mA"),
+        0x15 => (Cow::Borrowed("mA AC"), "mA"),
+        0x16 => (Cow::Borrowed("mA AC+DC"), "mA"),
+        0x17 => (Cow::Borrowed("A DC"), "A"),
+        0x18 => (Cow::Borrowed("A AC"), "A"),
+        0x19 => (Cow::Borrowed("A AC+DC"), "A"),
+        0x1A => (Cow::Borrowed("VFC"), "V"),
+        0x1B => (Cow::Borrowed("% 4-20mA"), "%"),
+        0x1C => (Cow::Borrowed("600A DC"), "A"),
+        0x1D => (Cow::Borrowed("600A AC"), "A"),
+        0x24 => (Cow::Borrowed("NCV"), ""),
+        _ => {
+            warn!("ut171: unknown mode byte {:#04x}", byte);
+            (Cow::Owned(format!("Unknown({:#04x})", byte)), "")
         }
     }
-    warn!("ut171: unknown mode byte {:#04x}", byte);
-    (Cow::Owned(format!("Unknown({:#04x})", byte)), "")
 }
 
 const UT171_COMMANDS: &[&str] = &["connect", "pause"];
@@ -451,7 +448,13 @@ mod tests {
 
     #[test]
     fn all_known_modes_parse() {
-        for &(code, _name, _unit) in MODE_TABLE {
+        // All known mode bytes from Ghidra analysis of UT171C.exe
+        let known_modes: &[u8] = &[
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+            0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C,
+            0x1D, 0x24,
+        ];
+        for &code in known_modes {
             let payload = make_payload(code, 0x01, 1.0, 0x00);
             let m = parse_measurement(&payload).unwrap();
             assert!(
