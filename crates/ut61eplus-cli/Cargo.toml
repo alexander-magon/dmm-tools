@@ -21,3 +21,6 @@ ctrlc = "3"
 log = "0.4"
 console = "0.15"
 serde_yaml = "0.9"
+
+[dev-dependencies]
+ut61eplus-lib = { path = "../ut61eplus-lib", features = ["test-support"] }

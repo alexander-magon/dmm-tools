@@ -427,6 +427,45 @@ pub fn parse_measurement(payload: &[u8], table: &dyn DeviceTable) -> Result<Meas
     })
 }
 
+/// Build a 14-byte payload and parse it into a `Measurement` using the UT61E+ table.
+///
+/// This is a convenience helper for tests that need a realistic `Measurement`
+/// produced by the protocol parser rather than a hand-constructed struct.
+///
+/// Parameters mirror the raw protocol layout:
+/// - `mode`: mode byte (e.g. 0x02 = DC V)
+/// - `range`: range nibble (0x30 prefix added automatically)
+/// - `display`: 7-byte ASCII display value (e.g. `b"  5.678"`)
+/// - `progress`: (high, low) progress bytes
+/// - `flags`: (flag1, flag2, flag3) nibbles (0x30 prefix added automatically)
+#[cfg(any(test, feature = "test-support"))]
+pub fn make_test_measurement(
+    mode: u8,
+    range: u8,
+    display: &[u8; 7],
+    progress: (u8, u8),
+    flags: (u8, u8, u8),
+) -> Measurement {
+    let payload: Vec<u8> = vec![
+        mode,
+        range | 0x30,
+        display[0],
+        display[1],
+        display[2],
+        display[3],
+        display[4],
+        display[5],
+        display[6],
+        progress.0,
+        progress.1,
+        flags.0 | 0x30,
+        flags.1 | 0x30,
+        flags.2 | 0x30,
+    ];
+    let table = tables::ut61e_plus::Ut61ePlusTable::new();
+    parse_measurement(&payload, &table).unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

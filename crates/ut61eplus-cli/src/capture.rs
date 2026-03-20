@@ -598,37 +598,11 @@ pub fn run_capture_step(
 #[cfg(test)]
 mod tests {
     use super::*;
-    /// Helper: build a Measurement for testing (no real device needed).
-    fn make_measurement(
-        mode: u8,
-        range: u8,
-        display: &[u8; 7],
-        progress: (u8, u8),
-        flags: (u8, u8, u8),
-    ) -> Measurement {
-        let payload: Vec<u8> = vec![
-            mode,
-            range | 0x30,
-            display[0],
-            display[1],
-            display[2],
-            display[3],
-            display[4],
-            display[5],
-            display[6],
-            progress.0,
-            progress.1,
-            flags.0 | 0x30,
-            flags.1 | 0x30,
-            flags.2 | 0x30,
-        ];
-        let table = ut61eplus_lib::protocol::ut61eplus::tables::ut61e_plus::Ut61ePlusTable::new();
-        ut61eplus_lib::protocol::ut61eplus::parse_measurement(&payload, &table).unwrap()
-    }
+    use ut61eplus_lib::protocol::ut61eplus::make_test_measurement;
 
     #[test]
     fn sample_data_from_normal_measurement() {
-        let m = make_measurement(0x02, 0x01, b"  5.678", (0x05, 0x0A), (0x00, 0x00, 0x00));
+        let m = make_test_measurement(0x02, 0x01, b"  5.678", (0x05, 0x0A), (0x00, 0x00, 0x00));
         let s = SampleData::from_measurement(&m);
         assert_eq!(s.mode_byte, "0x02");
         assert_eq!(s.mode, "DC V");
@@ -641,7 +615,7 @@ mod tests {
 
     #[test]
     fn sample_data_from_overload() {
-        let m = make_measurement(0x06, 0x00, b"    OL ", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let m = make_test_measurement(0x06, 0x00, b"    OL ", (0x00, 0x00), (0x00, 0x00, 0x00));
         let s = SampleData::from_measurement(&m);
         assert_eq!(s.value, "OL");
         assert_eq!(s.mode, "Ω");
@@ -649,7 +623,7 @@ mod tests {
 
     #[test]
     fn sample_data_from_ncv() {
-        let m = make_measurement(0x14, 0x00, b"      3", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let m = make_test_measurement(0x14, 0x00, b"      3", (0x00, 0x00), (0x00, 0x00, 0x00));
         let s = SampleData::from_measurement(&m);
         assert_eq!(s.value, "NCV:3");
         assert_eq!(s.mode, "NCV");
@@ -657,7 +631,7 @@ mod tests {
 
     #[test]
     fn sample_data_raw_hex() {
-        let m = make_measurement(0x02, 0x00, b" 0.0000", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let m = make_test_measurement(0x02, 0x00, b" 0.0000", (0x00, 0x00), (0x00, 0x00, 0x00));
         let s = SampleData::from_measurement(&m);
         // raw_hex should have 14 hex bytes separated by spaces
         let parts: Vec<&str> = s.raw_hex.split(' ').collect();
@@ -667,7 +641,7 @@ mod tests {
     #[test]
     fn sample_data_flags_mapping() {
         // flag1=0x0F (REL+HOLD+MIN+MAX), flag2=0x04 (manual range), flag3=0x08 (DC)
-        let m = make_measurement(0x02, 0x00, b"  1.234", (0x00, 0x00), (0x0F, 0x04, 0x08));
+        let m = make_test_measurement(0x02, 0x00, b"  1.234", (0x00, 0x00), (0x0F, 0x04, 0x08));
         let s = SampleData::from_measurement(&m);
         assert!(s.flags.hold);
         assert!(s.flags.rel);
@@ -679,7 +653,7 @@ mod tests {
 
     #[test]
     fn summary_format() {
-        let m = make_measurement(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x02, 0x00, 0x00));
+        let m = make_test_measurement(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x02, 0x00, 0x00));
         let s = SampleData::from_measurement(&m);
         let summary = s.summary();
         assert!(summary.contains("5.678"));
@@ -690,7 +664,7 @@ mod tests {
 
     #[test]
     fn summary_auto_only() {
-        let m = make_measurement(0x02, 0x01, b"  1.000", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let m = make_test_measurement(0x02, 0x01, b"  1.000", (0x00, 0x00), (0x00, 0x00, 0x00));
         let s = SampleData::from_measurement(&m);
         let summary = s.summary();
         assert!(summary.contains("[AUTO]"));
@@ -793,7 +767,7 @@ mod tests {
 
     #[test]
     fn capture_report_serde_roundtrip() {
-        let m = make_measurement(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x00, 0x00, 0x00));
+        let m = make_test_measurement(0x02, 0x01, b"  5.678", (0x00, 0x00), (0x00, 0x00, 0x00));
         let sample = SampleData::from_measurement(&m);
 
         let report = CaptureReport {

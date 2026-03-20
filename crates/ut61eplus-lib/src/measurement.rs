@@ -46,6 +46,33 @@ pub struct Measurement {
     pub raw_payload: Vec<u8>,
 }
 
+#[cfg(any(test, feature = "test-support"))]
+impl Measurement {
+    /// Create a `Measurement` with sensible defaults for testing.
+    ///
+    /// Only `value`, `unit`, and `flags` are caller-specified; all other fields
+    /// get safe dummy values (mode="DC V", range_label="22V", etc.).
+    pub fn test_fixture(
+        value: MeasuredValue,
+        unit: &'static str,
+        flags: StatusFlags,
+    ) -> Measurement {
+        Measurement {
+            timestamp: Instant::now(),
+            mode: "DC V".into(),
+            mode_raw: 0x02,
+            range_raw: 1,
+            value,
+            unit: unit.into(),
+            range_label: "22V".into(),
+            progress: Some(0),
+            display_raw: Some("  5.678".to_string()),
+            flags,
+            raw_payload: vec![],
+        }
+    }
+}
+
 impl std::fmt::Display for Measurement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let value_str = match &self.value {
@@ -73,29 +100,10 @@ impl std::fmt::Display for Measurement {
 mod tests {
     use super::*;
 
-    fn make_measurement(
-        value: MeasuredValue,
-        unit: &'static str,
-        flags: StatusFlags,
-    ) -> Measurement {
-        Measurement {
-            timestamp: Instant::now(),
-            mode: "DC V".into(),
-            mode_raw: 0x02,
-            range_raw: 1,
-            value,
-            unit: unit.into(),
-            range_label: "22V".into(),
-            progress: Some(0),
-            display_raw: Some("  5.678".to_string()),
-            flags,
-            raw_payload: vec![],
-        }
-    }
-
     #[test]
     fn display_normal() {
-        let m = make_measurement(MeasuredValue::Normal(5.678), "V", StatusFlags::default());
+        let m =
+            Measurement::test_fixture(MeasuredValue::Normal(5.678), "V", StatusFlags::default());
         let s = m.to_string();
         assert!(s.contains("5.678"));
         assert!(s.contains("V"));
@@ -103,13 +111,13 @@ mod tests {
 
     #[test]
     fn display_overload() {
-        let m = make_measurement(MeasuredValue::Overload, "Ω", StatusFlags::default());
+        let m = Measurement::test_fixture(MeasuredValue::Overload, "Ω", StatusFlags::default());
         assert!(m.to_string().contains("OL"));
     }
 
     #[test]
     fn display_ncv() {
-        let m = make_measurement(MeasuredValue::NcvLevel(3), "", StatusFlags::default());
+        let m = Measurement::test_fixture(MeasuredValue::NcvLevel(3), "", StatusFlags::default());
         assert!(m.to_string().contains("NCV:3"));
     }
 
@@ -120,7 +128,7 @@ mod tests {
             auto_range: true,
             ..Default::default()
         };
-        let m = make_measurement(MeasuredValue::Normal(1.0), "V", flags);
+        let m = Measurement::test_fixture(MeasuredValue::Normal(1.0), "V", flags);
         let s = m.to_string();
         assert!(s.contains("HOLD"));
         assert!(s.contains("AUTO"));
