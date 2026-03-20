@@ -35,15 +35,16 @@ The library crate handles all device communication and data parsing. It has no U
 **Data flow:**
 
 ```
-CLI/GUI ──► registry::resolve_device() ──► SelectableDevice.new_protocol()
-                                                    │
+CLI/GUI ──► registry::resolve_device()
+                       │
+                       └──► SelectableDevice.new_protocol()
+                                           │
 USB HID ──► Cp2110 (Transport) ──► Box<dyn Protocol> ──► Measurement { mode, value, unit, flags }
-                                         │
-                              Registry factory selects impl:
-                              ├── Ut61PlusProtocol  (polled, AB CD framing, per-model DeviceTable)
-                              ├── Ut8803Protocol    (streaming, 0x5A trigger)
-                              ├── Ut171Protocol     (streaming, float32 LE)
-                              └── Ut181aProtocol    (streaming, device-sent units)
+                                           │
+                                           ├── Ut61PlusProtocol  (polled, AB CD framing, per-model DeviceTable)
+                                           ├── Ut8803Protocol    (streaming, 0x5A trigger)
+                                           ├── Ut171Protocol     (streaming, float32 LE)
+                                           └── Ut181aProtocol    (streaming, device-sent units)
 ```
 
 `Dmm<T: Transport>` holds a `Box<dyn Protocol>`. The `Protocol` trait provides `init()`,
