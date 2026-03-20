@@ -23,7 +23,7 @@ The library crate handles all device communication and data parsing. It has no U
 | `protocol/mod.rs` | `Protocol` trait (object-safe), `DeviceFamily` enum, `DeviceProfile`, `Stability` |
 | `protocol/registry.rs` | Device registry: `SelectableDevice` entries, factory functions, `resolve_device()` lookup. CLI and GUI use the registry for device selection — no device-specific code in app crates. |
 | `protocol/framing.rs` | Message framing: find `AB CD` header, extract payload, validate checksum |
-| `protocol/ut61eplus/` | UT61E+ family: `Ut61PlusProtocol`, `Mode` enum, `Command` enum, `tables/` (per-model `DeviceTable` impls) |
+| `protocol/ut61eplus/` | UT61E+ family: `Ut61PlusProtocol`, `Mode` enum, `Command` enum, `tables/` (per-model `DeviceTable` impls with range info and spec data) |
 | `protocol/ut8803/` | UT8803 family: `Ut8803Protocol` — streaming protocol with 0x5A trigger |
 | `protocol/ut171/` | UT171 family: `Ut171Protocol` — streaming protocol, float32 LE values |
 | `protocol/ut181a/` | UT181A: `Ut181aProtocol` — streaming protocol, device-sent unit strings |
@@ -98,4 +98,5 @@ sample log, persistent settings.
 9. **Graph segment caching** — segments and gap ranges are rebuilt only when history changes, not every render frame.
 10. **Bounded buffers** — graph history (10K points), recording (500K samples), and the background channel prevent unbounded memory growth during sustained use.
 11. **Settings schema evolution** — `#[serde(default)]` on `Settings` allows adding new fields without breaking existing config files.
-12. **Device registry** — all device metadata (display names, aliases, activation instructions, protocol factories) lives in a single `DEVICES` slice in the library. CLI and GUI consume the registry without device-specific knowledge, so adding a new device family requires zero app code changes.
+12. **Device registry** — all device metadata (display names, aliases, activation instructions, protocol factories, manual URLs) lives in a single `DEVICES` slice in the library. CLI and GUI consume the registry without device-specific knowledge, so adding a new device family requires zero app code changes.
+13. **Static spec data** — per-range specifications (resolution, accuracy bands) and per-mode metadata (input impedance, notes) are `&'static` arrays in `tables/specs_*.rs` files, transcribed from device manuals. The GUI caches spec lookups keyed on `(mode_raw, range_raw)` and re-looks up only on mode/range changes — zero per-frame allocations. Use `cargo run -p ut61eplus-lib --example dump_specs` to verify spec data against manuals.

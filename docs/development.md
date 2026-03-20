@@ -81,6 +81,27 @@ DeviceFamily::Ut99x => Box::new(Ut99xProtocol::new()),
 The `Protocol` trait is object-safe and `Send`, so the new family works automatically
 with `Dmm<T>`, the CLI, and the GUI.
 
+## Verifying Specification Data
+
+The `dump_specs` example prints all per-device specification data (resolution,
+accuracy, input impedance, notes) in formatted tables for side-by-side
+comparison with the PDF manuals in `references/`.
+
+```sh
+# Dump all devices
+cargo run -p ut61eplus-lib --example dump_specs
+
+# Dump a specific device
+cargo run -p ut61eplus-lib --example dump_specs -- ut61b+
+
+# Multiple devices
+cargo run -p ut61eplus-lib --example dump_specs -- ut61eplus ut61d+
+```
+
+Pipe to `less` or redirect to a file for easier comparison. The output
+enumerates every mode and range for each device, showing exactly what the
+GUI specifications panel will display.
+
 ## Golden File Tests
 
 Golden file tests verify measurement parsing against known-good byte sequences.

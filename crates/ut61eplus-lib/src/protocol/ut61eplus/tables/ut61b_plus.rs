@@ -1,4 +1,5 @@
-use super::{DeviceTable, RangeInfo};
+use super::specs_ut61b_plus as specs;
+use super::{DeviceTable, ModeSpecInfo, RangeInfo, SpecInfo};
 use crate::protocol::ut61eplus::mode::Mode;
 
 /// Device table for the UNI-T UT61B+ (and UT161B).
@@ -421,6 +422,51 @@ impl DeviceTable for Ut61bPlusTable {
 
     fn model_name(&self) -> &'static str {
         "UNI-T UT61B+"
+    }
+
+    fn spec_info(&self, mode: Mode, range: u8) -> Option<&'static SpecInfo> {
+        let table: &[SpecInfo] = match mode {
+            Mode::DcV => specs::DC_V_SPECS,
+            Mode::AcV => specs::AC_V_SPECS,
+            Mode::DcMv => specs::DC_MV_SPECS,
+            Mode::AcMv => specs::AC_MV_SPECS,
+            Mode::Ohm => specs::OHM_SPECS,
+            Mode::Continuity => specs::CONTINUITY_SPECS,
+            Mode::Diode => specs::DIODE_SPECS,
+            Mode::Capacitance => specs::CAP_SPECS,
+            Mode::DcUa => specs::DC_UA_SPECS,
+            Mode::AcUa => specs::AC_UA_SPECS,
+            Mode::DcMa => specs::DC_MA_SPECS,
+            Mode::AcMa => specs::AC_MA_SPECS,
+            Mode::DcA => specs::DC_A_SPECS,
+            Mode::AcA => specs::AC_A_SPECS,
+            Mode::Hz => specs::HZ_SPECS,
+            Mode::DutyCycle => specs::DUTY_SPECS,
+            _ => return None,
+        };
+        table.get(range as usize)
+    }
+
+    fn mode_spec_info(&self, mode: Mode) -> Option<&'static ModeSpecInfo> {
+        Some(match mode {
+            Mode::DcV => &specs::DC_V_MODE,
+            Mode::AcV => &specs::AC_V_MODE,
+            Mode::DcMv => &specs::DC_MV_MODE,
+            Mode::AcMv => &specs::AC_MV_MODE,
+            Mode::Ohm => &specs::OHM_MODE,
+            Mode::Continuity => &specs::CONTINUITY_MODE,
+            Mode::Diode => &specs::DIODE_MODE,
+            Mode::Capacitance => &specs::CAP_MODE,
+            Mode::DcUa => &specs::DC_UA_MODE,
+            Mode::AcUa => &specs::AC_UA_MODE,
+            Mode::DcMa => &specs::DC_MA_MODE,
+            Mode::AcMa => &specs::AC_MA_MODE,
+            Mode::DcA => &specs::DC_A_MODE,
+            Mode::AcA => &specs::AC_A_MODE,
+            Mode::Hz => &specs::HZ_MODE,
+            Mode::DutyCycle => &specs::DUTY_MODE,
+            _ => return None,
+        })
     }
 }
 

@@ -16,6 +16,7 @@ pub struct Settings {
     pub show_graph: bool,
     pub show_stats: bool,
     pub show_recording: bool,
+    pub show_specs: bool,
     /// Query device name on connect (causes a beep on the meter).
     pub query_device_name: bool,
     /// Automatically connect to the meter when the GUI starts.
@@ -38,6 +39,7 @@ impl Default for Settings {
             show_graph: true,
             show_stats: true,
             show_recording: true,
+            show_specs: true,
             query_device_name: true,
             auto_connect: true,
             zoom_pct: 100,
@@ -85,6 +87,7 @@ mod tests {
         assert!(s.show_graph);
         assert!(s.show_stats);
         assert!(s.show_recording);
+        assert!(s.show_specs);
         assert!(s.query_device_name);
         assert_eq!(s.theme, ThemeMode::Dark);
     }
@@ -96,6 +99,7 @@ mod tests {
             show_graph: false,
             show_stats: true,
             show_recording: false,
+            show_specs: false,
             query_device_name: false,
             auto_connect: false,
             zoom_pct: 150,
@@ -109,6 +113,7 @@ mod tests {
         assert!(!deserialized.show_graph);
         assert!(deserialized.show_stats);
         assert!(!deserialized.show_recording);
+        assert!(!deserialized.show_specs);
         assert_eq!(deserialized.zoom_pct, 150);
         assert_eq!(deserialized.sample_interval_ms, 500);
     }

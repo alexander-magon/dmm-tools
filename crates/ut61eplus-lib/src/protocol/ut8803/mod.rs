@@ -383,6 +383,7 @@ pub fn parse_measurement(payload: &[u8]) -> Result<Measurement> {
         timestamp: Instant::now(),
         mode,
         mode_raw: mode_byte as u16,
+        range_raw,
         value,
         unit: unit.to_string(),
         range_label: String::new(), // UT8803 range label would need the full range table

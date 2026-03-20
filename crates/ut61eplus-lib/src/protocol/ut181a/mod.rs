@@ -475,6 +475,7 @@ pub fn parse_measurement(payload: &[u8]) -> Result<Measurement> {
         timestamp: Instant::now(),
         mode,
         mode_raw: mode_word,
+        range_raw: 0,
         value,
         unit,
         range_label: String::new(),

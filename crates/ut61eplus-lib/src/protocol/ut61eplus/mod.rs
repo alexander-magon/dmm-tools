@@ -428,6 +428,7 @@ pub fn parse_measurement(payload: &[u8], table: &dyn DeviceTable) -> Result<Meas
         timestamp: Instant::now(),
         mode: mode.to_string(),
         mode_raw: mode_byte as u16,
+        range_raw: range_byte,
         value,
         unit: unit.to_string(),
         range_label: range_label.to_string(),

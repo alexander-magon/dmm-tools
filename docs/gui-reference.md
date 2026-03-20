@@ -140,6 +140,40 @@ A thin strip below the main plot showing the full capture history.
 - Click or drag to jump to a specific time
 - Clicking near the end re-enables live mode
 
+## Specifications
+
+Shows per-range electrical specifications from the device manual, updated live
+as the meter changes mode/range. Helps users understand the precision and
+limitations of their current reading.
+
+- **Resolution** — smallest increment the meter can display in the current range
+- **Accuracy** — rated accuracy as ±(% of reading + counts). AC modes show
+  separate accuracy for each frequency band (e.g., 40Hz–1kHz and 1kHz–10kHz).
+  Temperature shows accuracy per sub-range (e.g., -40–0°C, 0–300°C).
+  LPF mode shows its own accuracy (separate from AC V).
+- **Input Z** — input impedance (e.g., ~10 MΩ), when applicable
+- **Notes** — additional info like "True RMS", thermocouple type, fuse ratings
+- **Manual** — hyperlink to the manufacturer's product page (shown whenever a
+  URL is configured for the device, even without per-range spec data)
+
+Panel visibility is controlled by the **Specifications** checkbox in Settings.
+Default: on.
+
+**Layout behavior:**
+
+| Layout | Display style |
+|---|---|
+| Wide (≥ 900px) | Full panel in the left sidebar, between controls and statistics |
+| Big meter | Pipe-separated inline summary, scaled with the reading |
+| Narrow (< 900px) | Compact single line below the reading |
+
+When no spec data is available (unsupported device or unrecognized mode), only
+the Manual link is shown (if configured). If neither specs nor manual URL exist,
+nothing renders.
+
+**Coverage:** UT61E+, UT61B+, UT61D+, UT161B/D/E, and Mock (delegates to
+UT61E+). Other devices show only the Manual link.
+
 ## Statistics
 
 - **Min**, **Max**, **Avg** values in monospace with fixed-width formatting
@@ -176,6 +210,7 @@ Opened via the gear icon. Persisted to `~/.config/ut61eplus/settings.json`.
 | **Show Graph** | on | Toggle graph panel visibility |
 | **Show Statistics** | on | Toggle statistics panel visibility |
 | **Show Recording** | on | Toggle recording panel visibility |
+| **Show Specifications** | on | Toggle specifications panel visibility |
 | **Auto-connect** | on | Connect to meter automatically on startup |
 | **Query device name** | on | Ask meter for its name on connect (causes a beep) |
 | **Sample interval** | 0 ms | Delay between measurements: 0 (fastest, ~10 Hz), 100, 200, 300, 500, 1000, 2000 ms. Requires reconnect. |
@@ -200,13 +235,14 @@ The layout adapts to the window size and panel visibility.
 Two-column layout with a resizable left sidebar (180–400px):
 
 - **Left column:** reading display, remote controls, connection help,
-  statistics
+  specifications, statistics
 - **Right column:** graph (top) and recording (bottom), separated by a
   draggable divider
 
 ### Narrow Layout (< 900px)
 
-Single-column stack: reading, controls, help, statistics, graph, recording.
+Single-column stack: reading, controls, help, specifications (compact),
+statistics, graph, recording.
 
 ### Big Meter Mode
 

@@ -38,7 +38,7 @@ Compact toolbar row: app title, Connect/Disconnect button, Pause/Resume button (
 Toggled by the gear icon. Contains:
 
 - **Theme:** Dark / Light
-- **Panels:** Show/hide Graph, Statistics, Recording
+- **Panels:** Show/hide Graph, Statistics, Recording, Specifications
 - **Auto-connect on start:** default on
 - **Show device name on connect (beeps):** default on — queries device name via protocol, which causes the meter to beep
 - **Sample interval:** 0ms (fastest, ~10 Hz), 100ms, 200ms, 300ms, 500ms, 1000ms, 2000ms. Requires reconnect to take effect.
@@ -51,18 +51,19 @@ Settings persist to `~/.config/ut61eplus/settings.json`.
 Threshold at ~900px available width:
 
 **Wide (≥ 900px):** Two-column layout with resizable panels.
-- Left column (resizable, 180-400px): reading display, remote control buttons, mode/range/flags, statistics panel
+- Left column (resizable, 180-400px): reading display, remote control buttons, mode/range/flags, specifications panel, statistics panel
 - Right column: graph toolbar + main graph + minimap, drag separator, recording panel
 - Graph/recording split resizable via drag handle
 
 **Narrow (< 900px):** Single-column stack.
 - Reading (compact single line for mode/flags)
+- Specifications (compact inline)
 - Statistics (compact line + visible window stats)
 - Graph (toolbar + main + minimap)
 - Recording (resizable via drag handle)
 
 **Big meter mode (graph + recording both hidden):** Single centered display.
-- Reading, buttons, and stats scale to fill available space
+- Reading, buttons, specs (inline), and stats scale to fill available space
 - Font size computed from both available width and height
 - Buttons and stats scale proportionally with the reading
 - Useful as a large bench-meter display or for presentations
@@ -81,6 +82,15 @@ Row of buttons below the reading (only shown when connected and receiving data):
 - **HOLD, REL, RANGE, AUTO, MIN/MAX, PEAK** — highlight blue when the corresponding protocol flag is active
 - **SELECT** — cycles sub-modes (no toggle state, mode change visible in reading)
 - **LIGHT** — toggles backlight (no protocol feedback for state)
+
+### Specifications Panel
+
+Shows per-range electrical specifications from the device manual:
+- Resolution, accuracy (with multiple frequency bands for AC), input impedance, notes
+- "Manual" hyperlink to manufacturer's product page when `manual_url` is configured
+- Adapts to each layout: full panel (wide), inline summary (big meter), compact line (narrow)
+- Data cached per mode+range — re-looked up only on mode/range changes, zero per-frame allocations
+- Coverage: UT61E+, UT61B+, UT61D+, UT161 family, Mock. Other devices show manual link only.
 
 ### Connection Help
 

@@ -6,12 +6,14 @@ use ut61eplus_lib::measurement::{MeasuredValue, Measurement};
 use ut61eplus_lib::mock::MockMode;
 use ut61eplus_lib::protocol::Stability;
 use ut61eplus_lib::protocol::registry;
+use ut61eplus_lib::protocol::ut61eplus::tables::{ModeSpecInfo, SpecInfo};
 use ut61eplus_lib::transport::Transport;
 
 use crate::display;
 use crate::graph::Graph;
 use crate::recording::Recording;
 use crate::settings::{Settings, ThemeMode};
+use crate::specs;
 use crate::stats::Stats;
 
 /// Messages from the background thread to the UI.
@@ -52,6 +54,13 @@ pub struct App {
     /// Consecutive timeout count (0 = not waiting).
     waiting_timeouts: u32,
     last_measurement: Option<Measurement>,
+
+    /// Cached per-range spec for current measurement (avoids lookup per frame).
+    cached_spec: Option<&'static SpecInfo>,
+    /// Cached per-mode spec for current measurement.
+    cached_mode_spec: Option<&'static ModeSpecInfo>,
+    /// Key used to invalidate spec cache: (mode_raw, range_raw).
+    cached_spec_key: (u16, u8),
 
     graph: Graph,
     stats: Stats,
@@ -231,6 +240,9 @@ impl App {
             last_error: None,
             waiting_timeouts: 0,
             last_measurement: None,
+            cached_spec: None,
+            cached_mode_spec: None,
+            cached_spec_key: (u16::MAX, u8::MAX),
             graph: Graph::new(),
             stats: Stats::new(),
             recording: Recording::new(),
@@ -447,6 +459,17 @@ impl App {
                     }
 
                     self.recording.push(&m);
+
+                    // Update spec cache if mode/range changed
+                    let new_key = (m.mode_raw, m.range_raw);
+                    if new_key != self.cached_spec_key {
+                        self.cached_spec_key = new_key;
+                        use ut61eplus_lib::protocol::ut61eplus::tables;
+                        let device_id = &self.settings.device_family;
+                        self.cached_spec = tables::lookup_spec(device_id, m.mode_raw, m.range_raw);
+                        self.cached_mode_spec = tables::lookup_mode_spec(device_id, m.mode_raw);
+                    }
+
                     self.last_measurement = Some(m);
                 }
                 DmmMessage::Disconnected(reason) => {
@@ -765,6 +788,12 @@ impl App {
             {
                 changed = true;
             }
+            if ui
+                .checkbox(&mut self.settings.show_specs, "Specifications")
+                .changed()
+            {
+                changed = true;
+            }
             if changed {
                 self.settings.save();
             }
@@ -1016,6 +1045,49 @@ impl App {
         }
     }
 
+    fn manual_url(&self) -> Option<&'static str> {
+        registry::find_device(&self.settings.device_family).and_then(|d| d.manual_url)
+    }
+
+    /// Render specs for the wide (side panel) layout.
+    fn show_specs_section(&self, ui: &mut Ui, scale: f32) {
+        if !self.settings.show_specs {
+            return;
+        }
+        let manual_url = self.manual_url();
+        if let Some(spec) = self.cached_spec {
+            specs::show_specs(ui, spec, self.cached_mode_spec, manual_url, scale);
+        } else if let Some(url) = manual_url {
+            specs::show_manual_only(ui, url, scale);
+        }
+    }
+
+    /// Render specs for the narrow (compact single-line) layout.
+    fn show_specs_section_compact(&self, ui: &mut Ui) {
+        if !self.settings.show_specs {
+            return;
+        }
+        let manual_url = self.manual_url();
+        if let Some(spec) = self.cached_spec {
+            specs::show_specs_compact(ui, spec, self.cached_mode_spec, manual_url);
+        } else if let Some(url) = manual_url {
+            specs::show_manual_only(ui, url, 1.0);
+        }
+    }
+
+    /// Render specs for big meter mode (pipe-separated inline).
+    fn show_specs_section_inline(&self, ui: &mut Ui, scale: f32) {
+        if !self.settings.show_specs {
+            return;
+        }
+        let manual_url = self.manual_url();
+        if let Some(spec) = self.cached_spec {
+            specs::show_specs_inline(ui, spec, self.cached_mode_spec, manual_url, scale);
+        } else if let Some(url) = manual_url {
+            specs::show_manual_only(ui, url, scale);
+        }
+    }
+
     fn show_recording_section(&mut self, ui: &mut Ui, compact: bool) {
         let btn_label = if self.recording.active {
             "\u{25A0} Stop"
@@ -1227,6 +1299,8 @@ impl eframe::App for App {
                         self.show_remote_controls(ui, scale);
                         self.show_connection_help(ui);
 
+                        self.show_specs_section_inline(ui, scale);
+
                         if self.settings.show_stats {
                             ui.add_space(12.0 * scale);
                             ui.separator();
@@ -1260,6 +1334,11 @@ impl eframe::App for App {
                     self.show_connection_help(ui);
                     ui.add_space(8.0);
 
+                    if self.cached_spec.is_some() || self.manual_url().is_some() {
+                        ui.separator();
+                        self.show_specs_section(ui, 1.0);
+                    }
+
                     if self.settings.show_stats {
                         ui.separator();
                         self.show_stats_section(ui, false, 1.0);
@@ -1276,6 +1355,7 @@ impl eframe::App for App {
                 display::show_reading_compact(ui, self.last_measurement.as_ref());
                 self.show_remote_controls(ui, 1.0);
                 self.show_connection_help(ui);
+                self.show_specs_section_compact(ui);
 
                 if self.settings.show_stats {
                     ui.separator();

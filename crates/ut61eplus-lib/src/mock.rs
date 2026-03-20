@@ -115,6 +115,7 @@ struct Scenario {
     id: MockMode,
     mode: &'static str,
     mode_raw: u16,
+    range_raw: u8,
     unit: &'static str,
     range_label: &'static str,
     range_max: f64,
@@ -172,6 +173,7 @@ fn scenarios() -> Vec<Scenario> {
             id: MockMode::DcV,
             mode: "DC V",
             mode_raw: 0x02,
+            range_raw: 1, // 22V range
             unit: "V",
             range_label: "22V",
             range_max: 22.0,
@@ -182,6 +184,7 @@ fn scenarios() -> Vec<Scenario> {
             id: MockMode::AcV,
             mode: "AC V",
             mode_raw: 0x00,
+            range_raw: 2, // 220V range
             unit: "V",
             range_label: "220V",
             range_max: 220.0,
@@ -192,6 +195,7 @@ fn scenarios() -> Vec<Scenario> {
             id: MockMode::Ohm,
             mode: "\u{03A9}",
             mode_raw: 0x06,
+            range_raw: 2, // 22kΩ range
             unit: "k\u{03A9}",
             range_label: "22k\u{03A9}",
             range_max: 22.0,
@@ -202,6 +206,7 @@ fn scenarios() -> Vec<Scenario> {
             id: MockMode::Capacitance,
             mode: "Capacitance",
             mode_raw: 0x09,
+            range_raw: 3, // 22µF range
             unit: "\u{00B5}F",
             range_label: "22\u{00B5}F",
             range_max: 22.0,
@@ -212,6 +217,7 @@ fn scenarios() -> Vec<Scenario> {
             id: MockMode::Hz,
             mode: "Hz",
             mode_raw: 0x04,
+            range_raw: 1, // 220Hz range
             unit: "Hz",
             range_label: "220Hz",
             range_max: 220.0,
@@ -222,6 +228,7 @@ fn scenarios() -> Vec<Scenario> {
             id: MockMode::Temp,
             mode: "Temp \u{00B0}C",
             mode_raw: 0x0A,
+            range_raw: 0,
             unit: "\u{00B0}C",
             range_label: "",
             range_max: 400.0,
@@ -232,6 +239,7 @@ fn scenarios() -> Vec<Scenario> {
             id: MockMode::DcMa,
             mode: "DC mA",
             mode_raw: 0x0E,
+            range_raw: 1, // 220mA range
             unit: "mA",
             range_label: "220mA",
             range_max: 220.0,
@@ -242,6 +250,7 @@ fn scenarios() -> Vec<Scenario> {
             id: MockMode::OhmOl,
             mode: "\u{03A9}",
             mode_raw: 0x06,
+            range_raw: 5, // 22MΩ range
             unit: "M\u{03A9}",
             range_label: "22M\u{03A9}",
             range_max: 22.0,
@@ -252,6 +261,7 @@ fn scenarios() -> Vec<Scenario> {
             id: MockMode::Ncv,
             mode: "NCV",
             mode_raw: 0x14,
+            range_raw: 0,
             unit: "",
             range_label: "",
             range_max: 4.0,
@@ -407,6 +417,7 @@ impl Protocol for MockProtocol {
 
         let mode = scenario.mode.to_string();
         let mode_raw = scenario.mode_raw;
+        let range_raw = scenario.range_raw;
         let unit = scenario.unit.to_string();
         let range_label = scenario.range_label.to_string();
         let range_max = scenario.range_max;
@@ -430,6 +441,7 @@ impl Protocol for MockProtocol {
             timestamp: Instant::now(),
             mode,
             mode_raw,
+            range_raw,
             value,
             unit,
             range_label,

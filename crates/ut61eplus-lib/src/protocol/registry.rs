@@ -21,6 +21,8 @@ pub struct SelectableDevice {
     pub family: DeviceFamily,
     /// Factory: create a Protocol instance configured for this device.
     pub new_protocol: fn() -> Box<dyn Protocol>,
+    /// URL to manufacturer's product page (for "Manual" hyperlink in GUI).
+    pub manual_url: Option<&'static str>,
 }
 
 fn new_ut61eplus() -> Box<dyn Protocol> {
@@ -85,6 +87,7 @@ pub static DEVICES: &[SelectableDevice] = &[
         activation_instructions: ACTIVATION_UT61EPLUS,
         family: DeviceFamily::Ut61EPlus,
         new_protocol: new_ut61eplus,
+        manual_url: Some("https://meters.uni-trend.com/product/ut61plus-series/"),
     },
     SelectableDevice {
         id: "ut61b+",
@@ -94,6 +97,7 @@ pub static DEVICES: &[SelectableDevice] = &[
         activation_instructions: ACTIVATION_UT61EPLUS,
         family: DeviceFamily::Ut61EPlus,
         new_protocol: new_ut61bplus,
+        manual_url: Some("https://meters.uni-trend.com/product/ut61plus-series/"),
     },
     SelectableDevice {
         id: "ut61d+",
@@ -103,6 +107,7 @@ pub static DEVICES: &[SelectableDevice] = &[
         activation_instructions: ACTIVATION_UT61EPLUS,
         family: DeviceFamily::Ut61EPlus,
         new_protocol: new_ut61dplus,
+        manual_url: Some("https://meters.uni-trend.com/product/ut61plus-series/"),
     },
     SelectableDevice {
         id: "ut161b",
@@ -112,6 +117,7 @@ pub static DEVICES: &[SelectableDevice] = &[
         activation_instructions: ACTIVATION_UT61EPLUS,
         family: DeviceFamily::Ut61EPlus,
         new_protocol: new_ut61bplus, // same table as UT61B+
+        manual_url: Some("https://meters.uni-trend.com/product/ut161-series/"),
     },
     SelectableDevice {
         id: "ut161d",
@@ -121,6 +127,7 @@ pub static DEVICES: &[SelectableDevice] = &[
         activation_instructions: ACTIVATION_UT61EPLUS,
         family: DeviceFamily::Ut61EPlus,
         new_protocol: new_ut61dplus,
+        manual_url: Some("https://meters.uni-trend.com/product/ut161-series/"),
     },
     SelectableDevice {
         id: "ut161e",
@@ -130,6 +137,7 @@ pub static DEVICES: &[SelectableDevice] = &[
         activation_instructions: ACTIVATION_UT61EPLUS,
         family: DeviceFamily::Ut61EPlus,
         new_protocol: new_ut61eplus,
+        manual_url: Some("https://meters.uni-trend.com/product/ut161-series/"),
     },
     // Other families
     SelectableDevice {
@@ -140,6 +148,7 @@ pub static DEVICES: &[SelectableDevice] = &[
         activation_instructions: ACTIVATION_UT8803,
         family: DeviceFamily::Ut8803,
         new_protocol: new_ut8803,
+        manual_url: Some("https://instruments.uni-trend.com/products/digital-multimeters/UT8803E"),
     },
     SelectableDevice {
         id: "ut171",
@@ -149,6 +158,7 @@ pub static DEVICES: &[SelectableDevice] = &[
         activation_instructions: ACTIVATION_UT171,
         family: DeviceFamily::Ut171,
         new_protocol: new_ut171,
+        manual_url: Some("https://meters.uni-trend.com/product/ut171-series/"),
     },
     SelectableDevice {
         id: "ut181a",
@@ -158,6 +168,7 @@ pub static DEVICES: &[SelectableDevice] = &[
         activation_instructions: ACTIVATION_UT181A,
         family: DeviceFamily::Ut181a,
         new_protocol: new_ut181a,
+        manual_url: Some("https://meters.uni-trend.com/product/ut181a/"),
     },
     // Mock
     SelectableDevice {
@@ -168,6 +179,7 @@ pub static DEVICES: &[SelectableDevice] = &[
         activation_instructions: ACTIVATION_MOCK,
         family: DeviceFamily::Mock,
         new_protocol: new_mock,
+        manual_url: None,
     },
 ];
 

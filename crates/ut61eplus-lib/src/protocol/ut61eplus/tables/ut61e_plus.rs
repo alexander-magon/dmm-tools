@@ -1,4 +1,5 @@
-use super::{DeviceTable, RangeInfo};
+use super::specs_ut61e_plus as specs;
+use super::{DeviceTable, ModeSpecInfo, RangeInfo, SpecInfo};
 use crate::protocol::ut61eplus::mode::Mode;
 
 /// Device table for the UNI-T UT61E+.
@@ -22,6 +23,7 @@ pub struct Ut61ePlusTable {
     ac_ma: [RangeInfo; 2],
     dc_a: [RangeInfo; 2],
     ac_a: [RangeInfo; 2],
+    hfe: [RangeInfo; 1],
 }
 
 impl Ut61ePlusTable {
@@ -361,6 +363,12 @@ impl Ut61ePlusTable {
                     overload_neg: -20.0,
                 },
             ],
+            hfe: [RangeInfo {
+                label: "1000\u{03B2}",
+                unit: "\u{03B2}",
+                overload_pos: 1000.0,
+                overload_neg: 0.0,
+            }],
         }
     }
 
@@ -400,13 +408,87 @@ impl DeviceTable for Ut61ePlusTable {
             Mode::AcDcV | Mode::LpfV | Mode::LozV => self.lookup(&self.dc_v, range),
             Mode::AcDcMv | Mode::LpfMv => self.lookup(&self.dc_mv, range),
             Mode::LozV2 | Mode::Lpf | Mode::AcDcA2 | Mode::LpfA => self.lookup(&self.dc_a, range),
+            Mode::Hfe => self.lookup(&self.hfe, range),
             // Modes without range tables
-            Mode::Ncv | Mode::Hfe | Mode::Live | Mode::Inrush => None,
+            Mode::Ncv | Mode::Live | Mode::Inrush => None,
         }
     }
 
     fn model_name(&self) -> &'static str {
         "UNI-T UT61E+"
+    }
+
+    fn spec_info(&self, mode: Mode, range: u8) -> Option<&'static SpecInfo> {
+        let table: &[SpecInfo] = match mode {
+            Mode::DcV => specs::DC_V_SPECS,
+            Mode::AcV => specs::AC_V_SPECS,
+            Mode::DcMv => specs::DC_MV_SPECS,
+            Mode::AcMv => specs::AC_MV_SPECS,
+            Mode::Ohm => specs::OHM_SPECS,
+            Mode::Continuity => specs::CONTINUITY_SPECS,
+            Mode::Diode => specs::DIODE_SPECS,
+            Mode::Capacitance => specs::CAP_SPECS,
+            Mode::TempC => specs::TEMP_C_SPECS,
+            Mode::TempF => specs::TEMP_F_SPECS,
+            Mode::DcUa => specs::DC_UA_SPECS,
+            Mode::AcUa => specs::AC_UA_SPECS,
+            Mode::DcMa => specs::DC_MA_SPECS,
+            Mode::AcMa => specs::AC_MA_SPECS,
+            Mode::DcA => specs::DC_A_SPECS,
+            Mode::AcA => specs::AC_A_SPECS,
+            Mode::Hz => specs::HZ_SPECS,
+            Mode::DutyCycle => specs::DUTY_SPECS,
+            Mode::AcDcV => specs::ACDC_V_SPECS,
+            Mode::LpfV => specs::LPF_V_SPECS,
+            Mode::LpfMv => specs::LPF_MV_SPECS,
+            Mode::Hfe => specs::HFE_SPECS,
+            // No published specs for these modes on UT61E+
+            Mode::LozV
+            | Mode::LozV2
+            | Mode::Lpf
+            | Mode::AcDcMv
+            | Mode::LpfA
+            | Mode::AcDcA2
+            | Mode::Ncv
+            | Mode::Live
+            | Mode::Inrush => return None,
+        };
+        table.get(range as usize)
+    }
+
+    fn mode_spec_info(&self, mode: Mode) -> Option<&'static ModeSpecInfo> {
+        Some(match mode {
+            Mode::DcV => &specs::DC_V_MODE,
+            Mode::AcV => &specs::AC_V_MODE,
+            Mode::DcMv => &specs::DC_MV_MODE,
+            Mode::AcMv => &specs::AC_MV_MODE,
+            Mode::Ohm => &specs::OHM_MODE,
+            Mode::Continuity => &specs::CONTINUITY_MODE,
+            Mode::Diode => &specs::DIODE_MODE,
+            Mode::Capacitance => &specs::CAP_MODE,
+            Mode::TempC | Mode::TempF => &specs::TEMP_MODE,
+            Mode::DcUa => &specs::DC_UA_MODE,
+            Mode::AcUa => &specs::AC_UA_MODE,
+            Mode::DcMa => &specs::DC_MA_MODE,
+            Mode::AcMa => &specs::AC_MA_MODE,
+            Mode::DcA => &specs::DC_A_MODE,
+            Mode::AcA => &specs::AC_A_MODE,
+            Mode::Hz => &specs::HZ_MODE,
+            Mode::DutyCycle => &specs::DUTY_MODE,
+            Mode::AcDcV => &specs::ACDC_V_MODE,
+            Mode::LpfV => &specs::LPF_V_MODE,
+            Mode::LpfMv => &specs::LPF_MV_MODE,
+            Mode::Hfe => &specs::HFE_MODE,
+            Mode::LozV
+            | Mode::LozV2
+            | Mode::Lpf
+            | Mode::AcDcMv
+            | Mode::LpfA
+            | Mode::AcDcA2
+            | Mode::Ncv
+            | Mode::Live
+            | Mode::Inrush => return None,
+        })
     }
 }
 
@@ -641,7 +723,7 @@ mod tests {
     #[test]
     fn no_range_table_modes() {
         let t = table();
-        for mode in [Mode::Ncv, Mode::Hfe, Mode::Live, Mode::Inrush] {
+        for mode in [Mode::Ncv, Mode::Live, Mode::Inrush] {
             assert!(
                 t.range_info(mode, 0).is_none(),
                 "{mode:?} should have no range table"

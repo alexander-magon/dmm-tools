@@ -22,8 +22,10 @@ pub struct Measurement {
     pub timestamp: Instant,
     /// Human-readable mode string (e.g. "DC V", "AC mV", "Unknown(0x05)").
     pub mode: String,
-    /// Raw protocol-level mode value (for debugging).
+    /// Raw protocol-level mode value (for debugging and spec lookup).
     pub mode_raw: u16,
+    /// Raw protocol-level range byte (for spec lookup).
+    pub range_raw: u8,
     pub value: MeasuredValue,
     /// Unit string (e.g. "V", "mV", "kΩ", "nS").
     pub unit: String,
@@ -70,6 +72,7 @@ mod tests {
             timestamp: Instant::now(),
             mode: "DC V".to_string(),
             mode_raw: 0x02,
+            range_raw: 1,
             value,
             unit: unit.to_string(),
             range_label: "22V".to_string(),
