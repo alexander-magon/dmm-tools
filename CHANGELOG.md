@@ -6,6 +6,7 @@
 
 - **Time-integral in cursor readout** — when both cursors are placed on a current or voltage graph, the readout now shows ∫ (integral) alongside ΔT and ΔV. For current modes, this displays charge (mAh/Ah/µAh). For voltage modes, V·s.
 - **Running integral in statistics** — a cumulative integral line ("∫") appears in the statistics panel for current and voltage modes. Resets with the Reset button or Ctrl+L.
+- **MIN/MAX and Peak buttons now cycle without exiting** — clicking cycles MAX ↔ MIN (or P-MAX ↔ P-MIN), matching the real device's short-press behavior. A separate "x" button exits the mode. This preserves stored values while browsing between states.
 
 ### CLI
 
@@ -15,6 +16,15 @@
 
 - **`Integrator` struct** (`stats.rs`) — trapezoidal-rule time integrator with gap detection (max_dt guard), overload gap handling, and clock-backward safety via `checked_duration_since()`.
 - **`integral_unit_info()`** — maps measurement units to integral display units (A→Ah, mA→mAh, µA→µAh, V→V·s, mV→mV·s).
+- **Mock MIN/MAX and Peak behavior updated** — mock now matches real device: independent flag cycling (MAX only / MIN only, never both), returns stored min/max/peak values instead of live readings, and clears AUTO during MIN/MAX mode.
+
+### Bug fixes
+
+- Fix GUI MIN/MAX and Peak buttons immediately exiting instead of cycling through states.
+
+### Documentation
+
+- Verified MIN/MAX, Peak, and SELECT2 protocol behavior against real UT61E+ hardware. Updated `docs/protocol.md` and `docs/verification-backlog.md` with findings: flag bits cycle independently, meter sends stored values (not live), Peak is context-dependent (AC modes only), SELECT2 cycles mV → Hz → Duty% on AC mV.
 
 ## v0.3.0
 
