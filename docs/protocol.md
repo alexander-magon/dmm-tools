@@ -113,8 +113,11 @@ Verified against real device and ljakob/unit_ut61eplus (Python).
 **Byte 11 (Flag 1):**
 - Bit 0: REL (relative/delta) — verified
 - Bit 1: HOLD — verified
-- Bit 2: MIN — verified
-- Bit 3: MAX — verified
+- Bit 2: MIN (stored minimum displayed) — verified
+- Bit 3: MAX (stored maximum displayed) — verified
+- MIN/MAX cycle: MAX only → MIN only → MAX (2-state, bits never both set).
+  When set, the display value is the stored min or max, not the live reading.
+  AUTO flag is cleared (range locked) during MIN/MAX mode.
 
 **Byte 12 (Flag 2):**
 - Bit 0: HV warning (>30V)
@@ -123,9 +126,12 @@ Verified against real device and ljakob/unit_ut61eplus (Python).
 
 **Byte 13 (Flag 3):**
 - Bit 0: Bar polarity
-- Bit 1: Peak MIN
-- Bit 2: Peak MAX
+- Bit 1: Peak MIN (stored instantaneous minimum peak) — verified
+- Bit 2: Peak MAX (stored instantaneous maximum peak) — verified
 - Bit 3: DC indicator
+- Peak cycle: P-MAX only → P-MIN only → P-MAX (2-state, bits never both set).
+  When set, the display value is the stored instantaneous peak (not RMS), not the live reading.
+  Peak mode is context-dependent: activates on AC modes (e.g., AC mV), no effect on DC V.
 
 ## Command Encoding
 
@@ -148,8 +154,8 @@ Known commands (from ljakob/unit_ut61eplus, verified against real device):
 | `0x4A` | HOLD | Yes (remote) |
 | `0x4B` | LIGHT (backlight) | Yes (remote) |
 | `0x4C` | SELECT (orange, cycles sub-modes) | Yes (remote, cycles DC→AC+DC) |
-| `0x4D` | Peak MIN/MAX | Received (beep, no visible effect on DC V) |
-| `0x4E` | Exit Peak | Sent, not visibly confirmed |
+| `0x4D` | Peak MIN/MAX | Yes (AC mV; context-dependent, no effect on DC V) |
+| `0x4E` | Exit Peak | Yes (clears peak flags, returns to live) |
 | `0x5E` | Get measurement | Yes |
 | `0x5F` | Get device name | — |
 
@@ -217,7 +223,8 @@ The configured delay adds on top of the ~100ms wire round-trip time.
 - **Request-response only:** The meter does not stream data — each reading requires sending the `0x5E` request command.
 - **Mode byte reflects active unit, not dial position:** On DC V dial with auto-range, the meter reports mode 0x02 (DCV) even when showing mV-scale values. The range byte determines the actual scale.
 - **AUTO flag has inverted logic:** Flag byte 12 bit 2 clear = auto-range ON.
-- **SELECT2 and Peak commands are context-dependent:** They beep (acknowledged) but only produce visible effects in specific modes (e.g., SELECT2 on AC V for frequency display).
+- **SELECT2 and Peak commands are context-dependent:** They beep (acknowledged) but only produce visible effects in specific modes (e.g., SELECT2 on AC V for frequency display, Peak on AC modes).
+- **MIN/MAX and Peak report stored values, not live:** When MIN, MAX, P-MIN, or P-MAX flags are set, the display value field contains the stored statistic, not the current live reading. The bar graph may still reflect the live signal.
 
 ## CP2110 Diagnostic Reports
 

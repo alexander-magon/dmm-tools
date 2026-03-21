@@ -76,27 +76,30 @@ real hardware**. Every aspect needs end-to-end verification.
 
 ### Commands not fully verified
 - **SELECT2 (0x49):** Received by meter (beeps) but no visible effect on DC V mode. Likely needs AC V mode for Hz/duty cycle display.
-- **Peak MIN/MAX (0x4D):** Received by meter (beeps) but no visible effect on DC V mode. May need active signal or specific mode.
-- **Exit Peak (0x4E):** Sent but not confirmed — need to first activate peak mode.
 - **Get Name (0x5F):** Verified — returns two frames: ack (FF 00) then ASCII name (e.g. "UT61E+").
 
-### MIN/MAX and Peak measurement reporting
-- **What does the meter send over USB during MIN/MAX mode?** The 14-byte
-  measurement payload has no dedicated min/max value fields. The meter LCD
-  shows min and max values, but the protocol likely still sends the live
-  measurement with the MIN/MAX flags set. Need to verify: capture data with
-  MIN/MAX active and a varying signal, confirm the reported value is the
-  live reading (not the stored min or max).
-- **Do the MIN and MAX flag bits cycle independently?** The meter's LCD
-  cycles through showing MIN, MAX, and AVG when pressing the MIN/MAX button
-  repeatedly. But the protocol might always set both bits together (both
-  are set in existing captures). Verify whether the meter ever reports
-  only-MIN or only-MAX over USB, or if the display cycling is LCD-only.
-- **Same question for Peak mode:** Does the meter report the live value with
-  peak flags, or does it report the captured peak value?
-- The mock currently sends the live waveform with flags set, which matches
-  the assumed protocol behavior. Update the mock if real device shows
-  otherwise.
+### MIN/MAX and Peak measurement reporting — RESOLVED
+
+Verified 2026-03-21 on real UT61E+ with bench PSU (DC V, 3.1V→5V ramp)
+and AC mV (open leads, ~8.7 mV noise).
+
+- **MIN/MAX sends the stored value, not the live reading.** With MIN/MAX
+  active during a 3.1V→5V ramp: MAX state reported 5.004V (frozen),
+  MIN state reported 3.102V (frozen). The display value field contains
+  the stored min or max, not the live measurement.
+- **MIN and MAX flag bits cycle independently.** The meter cycles
+  MAX (byte 11 bit 3 only) → MIN (byte 11 bit 2 only) → MAX → ...
+  as a 2-state cycle. The bits are never both set simultaneously.
+  No AVG state is reported over USB (AVG may be LCD-only or absent on UT61E+).
+- **AUTO flag is cleared during MIN/MAX** (byte 12 bit 2 set = manual range).
+  The meter locks the range when MIN/MAX recording is active.
+- **Peak mode works the same way.** Peak command (0x4D) activates on AC mV
+  (context-dependent — does not activate on DC V). Reports stored
+  instantaneous peak values (not RMS): P-MAX=19.33mV, P-MIN=-290.25mV.
+  Cycles P-MAX (byte 13 bit 2 only) → P-MIN (byte 13 bit 1 only).
+- **Exit Peak (0x4E) works.** Clears peak flags, returns to live readings.
+- **Mock updated** to match: independent flag cycling, stored values,
+  AUTO cleared during MIN/MAX.
 
 ### Range tables
 
@@ -149,7 +152,13 @@ decompilation (see `references/protocol-comparison.md`).
 | Remote AUTO | 0x47 | Verified |
 | Remote SELECT | 0x4C | Verified (cycles DC V → AC+DC) |
 | Remote LIGHT | 0x4B | Verified |
+| Remote Peak MIN/MAX | 0x4D | Verified (activates on AC mV; context-dependent, no effect on DC V) |
+| Remote Exit Peak | 0x4E | Verified (clears peak flags, returns to live readings) |
 | Get Name | 0x5F | Verified (two-frame response: ack FF 00 + ASCII name) |
+| MIN/MAX flag cycling | byte11 bits 2-3 | Verified: MAX only (bit 3) → MIN only (bit 2), 2-state cycle, never both set |
+| MIN/MAX value reporting | — | Verified: meter sends stored min/max value, not live reading |
+| Peak flag cycling | byte13 bits 1-2 | Verified: P-MAX only (bit 2) → P-MIN only (bit 1), 2-state cycle |
+| Peak value reporting | — | Verified: meter sends stored instantaneous peak, not live/RMS |
 | Command ack frames | — | Verified (2-byte payload after commands, skipped in measurement path) |
 | Frame format | len includes checksum | Verified (19 bytes total) |
 | Checksum | 16-bit BE sum | Verified |

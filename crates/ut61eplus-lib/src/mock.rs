@@ -296,6 +296,24 @@ fn scenarios() -> Vec<Scenario> {
     ]
 }
 
+/// MIN/MAX display cycling state, matching real device behavior.
+/// The meter cycles MAX → MIN → MAX as a 2-state toggle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MinMaxState {
+    Off,
+    Max,
+    Min,
+}
+
+/// Peak display cycling state, matching real device behavior.
+/// The meter cycles P-MAX → P-MIN → P-MAX as a 2-state toggle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PeakState {
+    Off,
+    Max,
+    Min,
+}
+
 /// Mock protocol that generates synthetic measurements without hardware.
 pub struct MockProtocol {
     scenarios: Vec<Scenario>,
@@ -308,10 +326,14 @@ pub struct MockProtocol {
     rel: bool,
     rel_base: Option<f64>,
     auto_range: bool,
-    min_flag: bool,
-    max_flag: bool,
-    peak_min: bool,
-    peak_max: bool,
+    /// Saved auto_range state before MIN/MAX activation (restored on exit).
+    auto_range_before_minmax: bool,
+    minmax_state: MinMaxState,
+    stored_min: Option<f64>,
+    stored_max: Option<f64>,
+    peak_state: PeakState,
+    stored_peak_min: Option<f64>,
+    stored_peak_max: Option<f64>,
     profile: DeviceProfile,
 }
 
@@ -328,10 +350,13 @@ impl MockProtocol {
             rel: false,
             rel_base: None,
             auto_range: true,
-            min_flag: false,
-            max_flag: false,
-            peak_min: false,
-            peak_max: false,
+            auto_range_before_minmax: true,
+            minmax_state: MinMaxState::Off,
+            stored_min: None,
+            stored_max: None,
+            peak_state: PeakState::Off,
+            stored_peak_min: None,
+            stored_peak_max: None,
             profile: DeviceProfile {
                 family_name: "mock",
                 model_name: "Mock UT61E+",
@@ -419,27 +444,9 @@ impl Protocol for MockProtocol {
     }
 
     fn request_measurement(&mut self, _transport: &dyn Transport) -> Result<Measurement> {
-        let scenario = self.current_scenario();
+        // Extract scenario data up front to avoid borrow conflict with &mut self.
+        let scenario = &self.scenarios[self.current_scenario];
         let raw_value = (scenario.value_fn)(self.step);
-
-        // Apply hold: freeze the value
-        let value = if self.hold {
-            self.held_value.clone().unwrap_or(raw_value.clone())
-        } else {
-            raw_value.clone()
-        };
-
-        // Apply rel: subtract baseline
-        let value = if self.rel {
-            if let (MeasuredValue::Normal(v), Some(base)) = (&value, self.rel_base) {
-                MeasuredValue::Normal(v - base)
-            } else {
-                value
-            }
-        } else {
-            value
-        };
-
         let mode: Cow<'static, str> = Cow::Borrowed(scenario.mode);
         let mode_raw = scenario.mode_raw;
         let range_raw = scenario.range_raw;
@@ -448,6 +455,76 @@ impl Protocol for MockProtocol {
         let range_max = scenario.range_max;
         let samples = scenario.samples;
 
+        // Apply hold: freeze the value
+        let live_value = if self.hold {
+            self.held_value.clone().unwrap_or(raw_value.clone())
+        } else {
+            raw_value.clone()
+        };
+
+        // Apply rel: subtract baseline
+        let live_value = if self.rel {
+            if let (MeasuredValue::Normal(v), Some(base)) = (&live_value, self.rel_base) {
+                MeasuredValue::Normal(v - base)
+            } else {
+                live_value
+            }
+        } else {
+            live_value
+        };
+
+        // Update stored MIN/MAX values from live reading
+        if self.minmax_state != MinMaxState::Off
+            && let MeasuredValue::Normal(v) = &live_value
+        {
+            self.stored_min = Some(match self.stored_min {
+                Some(prev) => prev.min(*v),
+                None => *v,
+            });
+            self.stored_max = Some(match self.stored_max {
+                Some(prev) => prev.max(*v),
+                None => *v,
+            });
+        }
+
+        // Update stored Peak values from live reading
+        if self.peak_state != PeakState::Off
+            && let MeasuredValue::Normal(v) = &live_value
+        {
+            self.stored_peak_min = Some(match self.stored_peak_min {
+                Some(prev) => prev.min(*v),
+                None => *v,
+            });
+            self.stored_peak_max = Some(match self.stored_peak_max {
+                Some(prev) => prev.max(*v),
+                None => *v,
+            });
+        }
+
+        // Select display value: stored min/max/peak when active, live otherwise.
+        // Real device sends the stored value, not the live reading.
+        let value = match self.minmax_state {
+            MinMaxState::Max => self
+                .stored_max
+                .map(MeasuredValue::Normal)
+                .unwrap_or(live_value.clone()),
+            MinMaxState::Min => self
+                .stored_min
+                .map(MeasuredValue::Normal)
+                .unwrap_or(live_value.clone()),
+            MinMaxState::Off => match self.peak_state {
+                PeakState::Max => self
+                    .stored_peak_max
+                    .map(MeasuredValue::Normal)
+                    .unwrap_or(live_value.clone()),
+                PeakState::Min => self
+                    .stored_peak_min
+                    .map(MeasuredValue::Normal)
+                    .unwrap_or(live_value.clone()),
+                PeakState::Off => live_value,
+            },
+        };
+
         let display_raw = Self::format_display(&value);
         let progress = Self::compute_progress(&value, range_max);
 
@@ -455,10 +532,10 @@ impl Protocol for MockProtocol {
             hold: self.hold,
             rel: self.rel,
             auto_range: self.auto_range,
-            min: self.min_flag,
-            max: self.max_flag,
-            peak_min: self.peak_min,
-            peak_max: self.peak_max,
+            min: self.minmax_state == MinMaxState::Min,
+            max: self.minmax_state == MinMaxState::Max,
+            peak_min: self.peak_state == PeakState::Min,
+            peak_max: self.peak_state == PeakState::Max,
             ..Default::default()
         };
 
@@ -517,20 +594,41 @@ impl Protocol for MockProtocol {
                 self.auto_range = true;
             }
             "minmax" => {
-                self.min_flag = true;
-                self.max_flag = true;
+                // Real device cycles: Off → MAX → MIN → MAX → MIN ...
+                self.minmax_state = match self.minmax_state {
+                    MinMaxState::Off => {
+                        self.auto_range_before_minmax = self.auto_range;
+                        self.auto_range = false;
+                        self.stored_min = None;
+                        self.stored_max = None;
+                        MinMaxState::Max
+                    }
+                    MinMaxState::Max => MinMaxState::Min,
+                    MinMaxState::Min => MinMaxState::Max,
+                };
             }
             "exit_minmax" => {
-                self.min_flag = false;
-                self.max_flag = false;
+                self.minmax_state = MinMaxState::Off;
+                self.stored_min = None;
+                self.stored_max = None;
+                self.auto_range = self.auto_range_before_minmax;
             }
             "peak" => {
-                self.peak_min = true;
-                self.peak_max = true;
+                // Real device cycles: Off → P-MAX → P-MIN → P-MAX → P-MIN ...
+                self.peak_state = match self.peak_state {
+                    PeakState::Off => {
+                        self.stored_peak_min = None;
+                        self.stored_peak_max = None;
+                        PeakState::Max
+                    }
+                    PeakState::Max => PeakState::Min,
+                    PeakState::Min => PeakState::Max,
+                };
             }
             "exit_peak" => {
-                self.peak_min = false;
-                self.peak_max = false;
+                self.peak_state = PeakState::Off;
+                self.stored_peak_min = None;
+                self.stored_peak_max = None;
             }
             "select" | "select2" => {
                 self.advance_scenario();
@@ -690,16 +788,94 @@ mod tests {
     }
 
     #[test]
-    fn test_minmax_flags() {
+    fn test_minmax_flags_cycle() {
         let mut dmm = open_mock().unwrap();
+
+        // First press → MAX only (matching real device)
         dmm.send_command("minmax").unwrap();
         let m = dmm.request_measurement().unwrap();
-        assert!(m.flags.min);
-        assert!(m.flags.max);
+        assert!(m.flags.max, "first press should show MAX");
+        assert!(!m.flags.min, "first press should NOT show MIN");
+        assert!(
+            !m.flags.auto_range,
+            "auto_range should be off during MIN/MAX"
+        );
+
+        // Second press → MIN only
+        dmm.send_command("minmax").unwrap();
+        let m = dmm.request_measurement().unwrap();
+        assert!(!m.flags.max, "second press should NOT show MAX");
+        assert!(m.flags.min, "second press should show MIN");
+
+        // Third press → back to MAX
+        dmm.send_command("minmax").unwrap();
+        let m = dmm.request_measurement().unwrap();
+        assert!(m.flags.max, "third press should show MAX again");
+        assert!(!m.flags.min, "third press should NOT show MIN");
+
+        // Exit → both off, auto_range restored
         dmm.send_command("exit_minmax").unwrap();
         let m = dmm.request_measurement().unwrap();
         assert!(!m.flags.min);
         assert!(!m.flags.max);
+        assert!(
+            m.flags.auto_range,
+            "auto_range should be restored after exit"
+        );
+    }
+
+    #[test]
+    fn test_minmax_reports_stored_values() {
+        let mut dmm = open_mock_mode(MockMode::DcV).unwrap();
+
+        // Collect a few live readings first to advance the waveform
+        for _ in 0..5 {
+            let _ = dmm.request_measurement().unwrap();
+        }
+
+        // Activate MIN/MAX and collect several readings
+        dmm.send_command("minmax").unwrap();
+        let mut max_values = Vec::new();
+        for _ in 0..10 {
+            let m = dmm.request_measurement().unwrap();
+            if let MeasuredValue::Normal(v) = &m.value {
+                max_values.push(*v);
+            }
+        }
+
+        // In MAX state, the reported value should be the running maximum —
+        // it should be non-decreasing (can only go up as new maxima are found).
+        for window in max_values.windows(2) {
+            assert!(
+                window[1] >= window[0] - 1e-10,
+                "MAX value should be non-decreasing: {} then {}",
+                window[0],
+                window[1]
+            );
+        }
+
+        // Switch to MIN state
+        dmm.send_command("minmax").unwrap();
+        let mut min_values = Vec::new();
+        for _ in 0..10 {
+            let m = dmm.request_measurement().unwrap();
+            if let MeasuredValue::Normal(v) = &m.value {
+                min_values.push(*v);
+            }
+        }
+
+        // In MIN state, the reported value should be the running minimum —
+        // it should be non-increasing.
+        for window in min_values.windows(2) {
+            assert!(
+                window[1] <= window[0] + 1e-10,
+                "MIN value should be non-increasing: {} then {}",
+                window[0],
+                window[1]
+            );
+        }
+
+        dmm.send_command("exit_minmax").unwrap();
     }
 
     #[test]
@@ -759,12 +935,28 @@ mod tests {
     }
 
     #[test]
-    fn test_peak_flags() {
+    fn test_peak_flags_cycle() {
         let mut dmm = open_mock().unwrap();
+
+        // First press → P-MAX only (matching real device)
         dmm.send_command("peak").unwrap();
         let m = dmm.request_measurement().unwrap();
-        assert!(m.flags.peak_min);
-        assert!(m.flags.peak_max);
+        assert!(m.flags.peak_max, "first press should show P-MAX");
+        assert!(!m.flags.peak_min, "first press should NOT show P-MIN");
+
+        // Second press → P-MIN only
+        dmm.send_command("peak").unwrap();
+        let m = dmm.request_measurement().unwrap();
+        assert!(!m.flags.peak_max, "second press should NOT show P-MAX");
+        assert!(m.flags.peak_min, "second press should show P-MIN");
+
+        // Third press → back to P-MAX
+        dmm.send_command("peak").unwrap();
+        let m = dmm.request_measurement().unwrap();
+        assert!(m.flags.peak_max, "third press should show P-MAX again");
+        assert!(!m.flags.peak_min, "third press should NOT show P-MIN");
+
+        // Exit → both off
         dmm.send_command("exit_peak").unwrap();
         let m = dmm.request_measurement().unwrap();
         assert!(!m.flags.peak_min);
