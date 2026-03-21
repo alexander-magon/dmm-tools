@@ -66,7 +66,7 @@ WARNING: UNI-T UT8803 support is EXPERIMENTAL (unverified against real hardware)
 | UT171 | UT171A/B/C | Streaming, float32 values | Experimental |
 | UT181A | UT181A | Streaming, float32 + unit strings | Experimental |
 
-**Experimental** means the protocol was reverse-engineered from vendor software but has not been tested against real hardware. If you have one of these meters, please run `ut61eplus --device <family> capture` and [share the report](https://github.com/antoinecellerier/dmm-tools/issues).
+**Experimental** means the protocol was reverse-engineered from vendor software but has not been tested against real hardware. If you have one of these meters, we'd love your help verifying: [UT8803](https://github.com/antoinecellerier/dmm-tools/issues/3), [UT171](https://github.com/antoinecellerier/dmm-tools/issues/4), [UT181A](https://github.com/antoinecellerier/dmm-tools/issues/5). For UT61B+/UT61D+ owners: [help verify model-specific modes](https://github.com/antoinecellerier/dmm-tools/issues/7).
 
 See [docs/supported-devices.md](docs/supported-devices.md) for the full compatibility list and reference implementations.
 
@@ -74,7 +74,7 @@ See [docs/supported-devices.md](docs/supported-devices.md) for the full compatib
 
 Pre-built binaries for Linux and Windows are available on the [Releases](https://github.com/antoinecellerier/dmm-tools/releases) page.
 
-> **macOS users:** The code should work on macOS but hasn't been tested against real hardware yet. If you have a Mac and a supported meter, please build from source and [let us know how it goes](https://github.com/antoinecellerier/dmm-tools/issues) — even "it works" helps.
+> **macOS users:** The code should work on macOS but hasn't been tested against real hardware yet. If you have a Mac and a supported meter, please build from source and [let us know how it goes](https://github.com/antoinecellerier/dmm-tools/issues/2) — even "it works" helps.
 
 ### Prerequisites
 

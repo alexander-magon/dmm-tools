@@ -5,6 +5,9 @@ Items that need real components or specific setups to verify.
 ## Pending Verification
 
 ### Modes not yet tested with real signals
+
+Tracked in [issue #6](https://github.com/antoinecellerier/dmm-tools/issues/6).
+
 - **DC mV (0x03):** Needs small DC voltage source. Currently only tested as auto-range from DC V.
 - **AC µA (0x0D):** Needs AC current source.
 - **AC mA (0x0F):** Mode byte verified via SELECT on mA dial. Needs AC current source for value verification.
@@ -18,6 +21,9 @@ Items that need real components or specific setups to verify.
 - **Inrush (0x1E):** Inrush current mode.
 
 ### Modes not reachable on UT61E+
+
+Tracked in [issue #7](https://github.com/antoinecellerier/dmm-tools/issues/7) — needs UT61D+ or UT61B+ hardware.
+
 These modes exist in the vendor software but could not be reached on the
 UT61E+ via any dial position + SELECT/SELECT2 combination. They are likely
 UT61D+-only or other-model features. Verified 2026-03-19 by exhaustively
@@ -32,7 +38,7 @@ These protocols are implemented based on reverse engineering (vendor software
 decompilation, community implementations) but have **never been tested against
 real hardware**. Every aspect needs end-to-end verification.
 
-**UT8803 / UT8803E:**
+**UT8803 / UT8803E** ([issue #3](https://github.com/antoinecellerier/dmm-tools/issues/3)):
 - Frame extraction (21-byte, AB CD header, BE checksum)
 - 0x5A streaming trigger byte
 - Mode byte mapping (23 position codes, 0x00-0x16)
@@ -45,7 +51,7 @@ real hardware**. Every aspect needs end-to-end verification.
 - Display value parsing (5 bytes → float)
 - Streaming rate (~2-3 Hz per manual)
 
-**UT171A / UT171B / UT171C:**
+**UT171A / UT171B / UT171C** ([issue #4](https://github.com/antoinecellerier/dmm-tools/issues/4)):
 - Frame extraction (1-byte length, LE checksum)
 - Connect command (`AB CD 04 00 0A 01 0F 00`) — may be needed before streaming
 - Mode byte mapping (26 modes, 0x01-0x24)
@@ -56,7 +62,7 @@ real hardware**. Every aspect needs end-to-end verification.
 - Status2 byte (offset 13) meaning
 - Aux value interpretation
 
-**UT181A:**
+**UT181A** ([issue #5](https://github.com/antoinecellerier/dmm-tools/issues/5)):
 - Frame extraction (2-byte LE length, LE checksum)
 - Mode word decoding (97 nibble-encoded uint16 modes)
 - Float32 LE value parsing with precision byte
@@ -93,6 +99,9 @@ real hardware**. Every aspect needs end-to-end verification.
   otherwise.
 
 ### Range tables
+
+Tracked in [issue #6](https://github.com/antoinecellerier/dmm-tools/issues/6).
+
 - Range byte values for each mode need verification against real device at each range.
 - DC mV mode (0x03) ranges not verified — does it share tables with DC V range 0?
 

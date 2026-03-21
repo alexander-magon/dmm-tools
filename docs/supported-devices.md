@@ -54,7 +54,7 @@ all six UT61+/UT161 models use identical protocol code:
 while the vendor software has entries for both 0x15 and 0x16 with
 different display value handling. Requires UT61D+ device testing.
 
-If you have any of the untested models, please [submit a capture](../CONTRIBUTING.md#protocol-captures) so we can confirm support and add the correct device tables.
+If you have any of the untested models, please [submit a capture](../CONTRIBUTING.md#protocol-captures) so we can confirm support and add the correct device tables. See [issue #7](https://github.com/antoinecellerier/dmm-tools/issues/7) for UT61D+/UT61B+ specific modes that need verification.
 
 ## Experimental: UT8803 (UCI protocol family)
 
@@ -63,7 +63,7 @@ streaming protocol. Use `--device ut8803`.
 
 | Model | Brand | Type | VID:PID | Status | Notes |
 |-------|-------|------|---------|--------|-------|
-| **UT8803 / UT8803E** | UNI-T | Bench DMM | `10C4:EA80` | **Experimental** | 21-byte AB CD frames, streaming after 0x5A trigger |
+| **UT8803 / UT8803E** | UNI-T | Bench DMM | `10C4:EA80` | **Experimental** ([help verify](https://github.com/antoinecellerier/dmm-tools/issues/3)) | 21-byte AB CD frames, streaming after 0x5A trigger |
 
 ## Future candidates (UCI protocol family)
 
@@ -130,8 +130,8 @@ ON" in the meter's SETUP menu.
 
 | Model | Brand | Type | VID:PID | Status | Notes |
 |-------|-------|------|---------|--------|-------|
-| **UT171A/B/C** | UNI-T | Industrial DMM | `10C4:EA80` | **Experimental** | 1-byte length, LE float32, 26 modes |
-| **UT181A** | UNI-T | Logging DMM | `10C4:EA80` | **Experimental** | 2-byte LE length, float32 + unit strings, 97 modes |
+| **UT171A/B/C** | UNI-T | Industrial DMM | `10C4:EA80` | **Experimental** ([help verify](https://github.com/antoinecellerier/dmm-tools/issues/4)) | 1-byte length, LE float32, 26 modes |
+| **UT181A** | UNI-T | Logging DMM | `10C4:EA80` | **Experimental** ([help verify](https://github.com/antoinecellerier/dmm-tools/issues/5)) | 2-byte LE length, float32 + unit strings, 97 modes |
 
 ## Other CP2110 meters (not yet implemented)
 

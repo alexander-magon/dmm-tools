@@ -47,7 +47,7 @@ macOS recognizes the CP2110 as a standard HID device via IOKit — no driver ins
 
 If the device is not detected, check **System Settings > Privacy & Security > Input Monitoring** and ensure your terminal app (or the GUI binary) has permission to access input devices.
 
-> **macOS support is experimental.** It compiles and should work but has not been tested against real hardware. If you have a Mac and a supported meter, please try it and [report your experience](https://github.com/antoinecellerier/dmm-tools/issues) — even "it works" is valuable feedback.
+> **macOS support is experimental.** It compiles and should work but has not been tested against real hardware. If you have a Mac and a supported meter, please try it and [report your experience](https://github.com/antoinecellerier/dmm-tools/issues/2) — even "it works" is valuable feedback.
 
 ## Troubleshooting
 
