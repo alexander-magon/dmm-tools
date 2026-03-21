@@ -41,6 +41,14 @@ Log out and back in for the group change to take effect.
 
 Install the CP2110 driver from [Silicon Labs](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers). After installation, verify the device appears in Device Manager under "Human Interface Devices" or "USB Devices".
 
+### macOS — no driver needed (experimental)
+
+macOS recognizes the CP2110 as a standard HID device via IOKit — no driver installation is required. Plug in the USB adapter and it should appear automatically.
+
+If the device is not detected, check **System Settings > Privacy & Security > Input Monitoring** and ensure your terminal app (or the GUI binary) has permission to access input devices.
+
+> **macOS support is experimental.** It compiles and should work but has not been tested against real hardware. If you have a Mac and a supported meter, please try it and [report your experience](https://github.com/antoinecellerier/dmm-tools/issues) — even "it works" is valuable feedback.
+
 ## Troubleshooting
 
 ### "USB adapter not found"
@@ -48,6 +56,7 @@ Install the CP2110 driver from [Silicon Labs](https://www.silabs.com/developers/
 - Verify the CP2110 USB adapter is plugged in
 - **Linux:** `lsusb | grep 10C4:EA80` — if missing, check the udev rule (see above)
 - **Windows:** check Device Manager for the CP2110 device — if missing or showing an error, reinstall the driver
+- **macOS:** `ioreg -p IOUSB -l | grep CP2110` — if missing, try a different USB port or hub. Check System Settings > Privacy & Security > Input Monitoring if the device appears in `ioreg` but the tool can't open it
 
 ### "No response from meter"
 

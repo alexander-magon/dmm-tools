@@ -10,6 +10,10 @@ fn main() {
                 eprintln!("Check USB connection.");
                 #[cfg(target_os = "linux")]
                 eprintln!("Ensure udev rules are installed (see udev/99-cp2110-unit.rules).");
+                #[cfg(target_os = "macos")]
+                eprintln!(
+                    "On macOS, the CP2110 should be recognized automatically (no driver needed)."
+                );
                 std::process::exit(1);
             }
             for (i, dev) in devices.iter().enumerate() {

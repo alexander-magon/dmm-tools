@@ -517,6 +517,11 @@ impl App {
                  On Windows, ensure the CP2110 driver is installed.\n\
                  Download from: silabs.com/developers/usb-to-uart-bridge-vcp-drivers\n\n\
                  Click \"Connect\" after resolving the issue."
+            } else if cfg!(target_os = "macos") {
+                "Check that the CP2110 USB adapter is plugged in.\n\
+                 On macOS, the CP2110 should be recognized automatically (no driver needed).\n\
+                 If not found, check System Settings > Privacy & Security > Input Monitoring.\n\n\
+                 Click \"Connect\" after resolving the issue."
             } else {
                 "Check that the CP2110 USB adapter is plugged in.\n\n\
                  Click \"Connect\" after resolving the issue."

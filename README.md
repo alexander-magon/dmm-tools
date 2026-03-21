@@ -74,10 +74,13 @@ See [docs/supported-devices.md](docs/supported-devices.md) for the full compatib
 
 Pre-built binaries for Linux and Windows are available on the [Releases](https://github.com/antoinecellerier/dmm-tools/releases) page.
 
+> **macOS users:** The code should work on macOS but hasn't been tested against real hardware yet. If you have a Mac and a supported meter, please build from source and [let us know how it goes](https://github.com/antoinecellerier/dmm-tools/issues) — even "it works" helps.
+
 ### Prerequisites
 
 - **Linux:** `libudev-dev` (Debian/Ubuntu) or `systemd-devel` (Fedora) — only needed when building from source
 - **Windows:** [CP2110 driver](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers) from Silicon Labs
+- **macOS:** No driver needed — the CP2110 is recognized as a standard HID device. Build from source (see below)
 - A [supported UNI-T multimeter](docs/supported-devices.md) with USB adapter plugged in
 
 ### Install from source

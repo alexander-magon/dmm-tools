@@ -257,6 +257,13 @@ fn print_cp2110_setup_help() {
             style("https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers").dim()
         );
     }
+    #[cfg(target_os = "macos")]
+    {
+        eprintln!("On macOS, the CP2110 should be recognized automatically (no driver needed).");
+        eprintln!(
+            "If the device is not found, check System Settings > Privacy & Security > Input Monitoring."
+        );
+    }
 }
 
 /// Set up a Ctrl+C handler that clears the returned flag when triggered.
