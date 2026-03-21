@@ -324,4 +324,4 @@ support depends on the AT-SPI integration in AccessKit (test with Orca).
 - [CLI reference](cli-reference.md) — command-line tool documentation
 - [Setup guide](setup.md) — build prerequisites, udev rules, first-run
   instructions
-- [UX design](ux-design.md) — design principles and layout rationale
+- [Supported devices](supported-devices.md) — full compatibility list and device families

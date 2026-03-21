@@ -295,6 +295,6 @@ ut61eplus capture --list-steps
 
 ## See Also
 
+- [GUI reference](gui-reference.md) — real-time graphing interface
 - [Setup guide](setup.md) — build prerequisites, udev rules, first-run instructions
-- [Protocol reference](protocol.md) — CP2110 transport, message formats, byte-level details
-- [Architecture](architecture.md) — crate layout and design decisions
+- [Supported devices](supported-devices.md) — full compatibility list and device families
