@@ -131,7 +131,7 @@ Verified against real device and ljakob/unit_ut61eplus (Python).
   AUTO flag is cleared (range locked) during MIN/MAX mode.
 
 **Byte 12 (Flag 2):**
-- Bit 0: HV warning (>30V)
+- Bit 0: HV warning (>30V per manual; confirmed set at 31V on DC V) — verified
 - Bit 1: Low battery — verified (intermittent on real device)
 - Bit 2: **!AUTO** (inverted: bit clear = auto-range ON) — verified
 

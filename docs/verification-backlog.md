@@ -104,8 +104,18 @@ and AC mV (open leads, ~8.7 mV noise).
 
 Tracked in [issue #6](https://github.com/antoinecellerier/dmm-tools/issues/6).
 
-- Range byte values for each mode need verification against real device at each range.
-- DC mV mode (0x03) ranges not verified — does it share tables with DC V range 0?
+- Range byte values for most modes still need verification against real device.
+- **DC V ranges verified (2026-03-21):** 4 ranges (0=2.2V, 1=22V, 2=220V, 3=1000V).
+  The RANGE button cycles 0→1→2→3→0, skipping ranges that would overflow
+  the current reading. The code has a 5th entry (range 4=220mV) from vendor
+  RE — this may be used by other models (UT61B+/D+) but was never observed
+  on the UT61E+. The 220mV capability on the UT61E+ is via DC mV mode (0x03),
+  a separate dial position.
+- **DC mV mode (0x03) is a separate mode, not DC V range 4.** Auto-range
+  stays in DC V mode (0x02) even at 100mV. DC mV (0x03) is only reached
+  via the mV dial position. On UT61E+, DC mV has only 1 range (range 0 =
+  220mV); the RANGE button has no effect. The code's dc_mv range 1 (2.2V)
+  may be used by other models.
 
 ### Mode byte collisions — RESOLVED
 Previously documented collisions (0x00=ACV/DCA, 0x02=DCV/hFE, 0x04=Hz/NCV)
@@ -142,6 +152,7 @@ decompilation (see `references/protocol-comparison.md`).
 | MIN flag | bit2 of byte11 | Verified (physical) |
 | MAX flag | bit3 of byte11 | Verified (physical + remote) |
 | AUTO flag | !bit2 of byte12 | Verified (inverted logic) |
+| HV warning | bit0 of byte12 | Verified (>30V per manual; confirmed set at 31V on DC V) |
 | LOW BAT | bit1 of byte12 | Verified (intermittent) |
 | Remote HOLD | 0x4A | Verified |
 | Remote REL | 0x48 | Verified |
@@ -159,6 +170,11 @@ decompilation (see `references/protocol-comparison.md`).
 | MIN/MAX value reporting | — | Verified: meter sends stored min/max value, not live reading |
 | Peak flag cycling | byte13 bits 1-2 | Verified: P-MAX only (bit 2) → P-MIN only (bit 1), 2-state cycle |
 | Peak value reporting | — | Verified: meter sends stored instantaneous peak, not live/RMS |
+| Bar graph encoding | bytes 9-10 | Verified: decimal (b9*10+b10), ~46 segments. Negative: bar_pol flag. OL: 44. |
+| Bar polarity | bit0 of byte13 | Verified (set on negative readings) |
+| DC indicator | bit3 of byte13 | Verified (set on DC V, clear on AC mV) |
+| DC V range table | ranges 0-3 | Verified: 0=2.2V, 1=22V, 2=220V, 3=1000V (4 ranges, not 5) |
+| DC mV mode | 0x03 | Verified: separate mode via dial, range 0=220mV only on UT61E+ |
 | Command ack frames | — | Verified (2-byte payload after commands, skipped in measurement path) |
 | Frame format | len includes checksum | Verified (19 bytes total) |
 | Checksum | 16-bit BE sum | Verified |
