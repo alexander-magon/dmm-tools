@@ -548,8 +548,37 @@ impl App {
         }
     }
 
+    /// Render the top bar: controls on the left, info/links on the right.
+    ///
+    /// Adaptive layout: when the window is wide enough, everything fits on
+    /// a single row. When it isn't (narrow window or high zoom), the right
+    /// group (version, Help, ?, settings) wraps to a second row to avoid
+    /// clipping. The decision uses cached widget widths from the previous
+    /// frame (egui Discussion #3468 pattern) — converges in one frame,
+    /// imperceptible to the user.
+    ///
+    /// The right group is rendered via `show_top_bar_right` in left-to-right
+    /// order so that Tab key navigation follows visual reading order
+    /// (Help → ? → ⚙) rather than the reverse.
     fn show_top_bar(&mut self, ui: &mut Ui, ctx: &egui::Context) {
+        let tc = ThemeColors::new(ui.visuals().dark_mode);
+        let green = tc.green();
+        let orange = tc.orange();
+        let gray = tc.gray();
+
+        // Cache left/right group widths from the previous frame to decide
+        // whether both fit on one row.
+        let left_id = egui::Id::new("top_bar_left_w");
+        let right_id = egui::Id::new("top_bar_right_w");
+        let cached_left: f32 = ui.data(|d| d.get_temp(left_id)).unwrap_or(300.0);
+        let cached_right: f32 = ui.data(|d| d.get_temp(right_id)).unwrap_or(200.0);
+        let spacing = ui.spacing().item_spacing.x;
+        let one_row = cached_left + cached_right + spacing < ui.available_width();
+
+        // Row 1: device label, action buttons, status indicator
         ui.horizontal(|ui| {
+            let left_start = ui.cursor().left();
+
             let device_label = registry::find_device(&self.settings.device_family)
                 .map(|d| d.display_name)
                 .unwrap_or("DMM");
@@ -589,11 +618,6 @@ impl App {
                 }
             }
 
-            let tc = ThemeColors::new(ui.visuals().dark_mode);
-            let green = tc.green();
-            let orange = tc.orange();
-            let gray = tc.gray();
-
             let (dot_color, status_text) = match &self.connection_state {
                 ConnectionState::Connected => {
                     let name = self.device_name.as_deref().unwrap_or("Connected");
@@ -615,40 +639,61 @@ impl App {
                 ui.label(RichText::new("EXPERIMENTAL").small().strong().color(orange));
             }
 
-            // LTR layout so code/tab order matches visual reading order.
-            // We cache the right-side group width from the previous frame
-            // to compute a spacer that pushes items to the right edge
-            // (pattern from egui Discussion #3468).
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                // Toast on the left (if any)
-                if let Some((msg, is_error, _)) = &self.toast {
-                    let color = if *is_error { tc.red() } else { green };
-                    ui.label(RichText::new(msg).small().color(color));
-                }
-                let cache_id = egui::Id::new("top_bar_right_width");
-                let cached_width: f32 = ui.data(|d| d.get_temp(cache_id)).unwrap_or(200.0);
-                let spacer = (ui.available_width() - cached_width).max(0.0);
-                ui.add_space(spacer);
-                let before = ui.cursor().left();
-                ui.label(
-                    RichText::new(crate::version_label())
-                        .small()
-                        .color(ui.visuals().weak_text_color()),
-                );
-                ui.hyperlink_to(
-                    "Help / GitHub",
-                    "https://github.com/antoinecellerier/dmm-tools",
-                );
-                if ui.button("?").on_hover_text("Keyboard shortcuts").clicked() {
-                    self.shortcut_help_open = !self.shortcut_help_open;
-                }
-                if ui.button("\u{2699}").on_hover_text("Settings").clicked() {
-                    self.settings_open = !self.settings_open;
-                }
-                let actual_width = ui.min_rect().right() - before;
-                ui.data_mut(|d| d.insert_temp(cache_id, actual_width));
-            });
+            // Toast inline on this row
+            if let Some((msg, is_error, _)) = &self.toast {
+                let color = if *is_error { tc.red() } else { green };
+                ui.label(RichText::new(msg).small().color(color));
+            }
+
+            let left_width = ui.min_rect().right() - left_start;
+            ui.data_mut(|d| d.insert_temp(left_id, left_width));
+
+            // If wide enough, render right-side items on the same row
+            if one_row {
+                self.show_top_bar_right(ui, right_id);
+            }
         });
+
+        // If not wide enough, render right-side items on a second row
+        if !one_row {
+            ui.horizontal(|ui| {
+                self.show_top_bar_right(ui, right_id);
+            });
+        }
+    }
+
+    /// Right side of the top bar: version label, Help/GitHub link, keyboard
+    /// shortcut help button, and settings button.
+    ///
+    /// Items are added left-to-right so that egui's Tab order matches the
+    /// visual reading direction. A cached-width spacer right-aligns the
+    /// group without needing a right-to-left layout (which would reverse
+    /// tab order). The cached width comes from the previous frame and
+    /// self-corrects in one frame.
+    fn show_top_bar_right(&mut self, ui: &mut Ui, cache_id: egui::Id) {
+        let cached_width: f32 = ui.data(|d| d.get_temp(cache_id)).unwrap_or(200.0);
+        let spacer = (ui.available_width() - cached_width).max(0.0);
+        ui.add_space(spacer);
+        let before = ui.cursor().left();
+
+        ui.label(
+            RichText::new(crate::version_label())
+                .small()
+                .color(ui.visuals().weak_text_color()),
+        );
+        ui.hyperlink_to(
+            "Help / GitHub",
+            "https://github.com/antoinecellerier/dmm-tools",
+        );
+        if ui.button("?").on_hover_text("Keyboard shortcuts").clicked() {
+            self.shortcut_help_open = !self.shortcut_help_open;
+        }
+        if ui.button("\u{2699}").on_hover_text("Settings").clicked() {
+            self.settings_open = !self.settings_open;
+        }
+
+        let actual_width = ui.min_rect().right() - before;
+        ui.data_mut(|d| d.insert_temp(cache_id, actual_width));
     }
 
     fn show_stats_section(&mut self, ui: &mut Ui, compact: bool, scale: f32) {
