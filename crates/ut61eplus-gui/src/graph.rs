@@ -192,6 +192,9 @@ impl Graph {
             self.origin = Some(now);
             self.live = true;
             self.view_center = 0.0;
+            self.cursor_a = None;
+            self.cursor_b = None;
+            self.cursor_next_is_b = false;
             self.invalidate_cache();
         }
         self.current_unit = unit.to_string();
@@ -212,6 +215,9 @@ impl Graph {
         self.view_center = 0.0;
         self.y_axis_fixed = false;
         self.y_user_set = false;
+        self.cursor_a = None;
+        self.cursor_b = None;
+        self.cursor_next_is_b = false;
         self.invalidate_cache();
     }
 
