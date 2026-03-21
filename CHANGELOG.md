@@ -2,6 +2,10 @@
 
 ## v0.3.0
 
+### Specifications, Keyboard Shortcuts & Mock Device
+
+This release adds live per-range specification display from device manuals, full keyboard navigation, screen reader support, and a simulated mock device for testing without hardware. Under the hood, a central device registry simplifies adding new meters, and a large refactoring improves code organization with 282 tests (up from 209).
+
 ### GUI
 
 - **Specifications panel** — shows per-range resolution, accuracy (with frequency bands for AC), input impedance, and notes from the device manual. Updates live as the meter changes mode/range. Covers UT61E+, UT61B+, UT61D+, UT161 family, and Mock. Includes "Manual" hyperlink when a URL is configured.
