@@ -17,10 +17,14 @@ pub struct Sample {
 
 impl Sample {
     pub fn from_measurement(m: &Measurement) -> Self {
-        let value_str = match &m.value {
-            MeasuredValue::Normal(v) => format!("{v}"),
-            MeasuredValue::Overload => "OL".to_string(),
-            MeasuredValue::NcvLevel(l) => format!("NCV:{l}"),
+        let value_str = if let Some(raw) = &m.display_raw {
+            raw.trim().to_string()
+        } else {
+            match &m.value {
+                MeasuredValue::Normal(v) => format!("{v}"),
+                MeasuredValue::Overload => "OL".to_string(),
+                MeasuredValue::NcvLevel(l) => format!("NCV:{l}"),
+            }
         };
         Self {
             wall_time: Local::now(),
