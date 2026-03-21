@@ -8,31 +8,31 @@ Rust tools for communicating with UNI-T digital multimeters over USB (CP2110 HID
 
 Includes a CLI for reading, recording, and remote-controlling the meter, and a GUI with real-time graphing.
 
-![GUI screenshot — live AC mV measurement with graph, statistics, reference line triggers, and recording](assets/gui-screenshot.png)
+![GUI screenshot — live DC mA measurement with graph, statistics, reference line triggers, and recording](assets/gui-screenshot.png)
 
-## CLI
+## [CLI](docs/cli-reference.md)
 
 - Live measurement streaming with text, CSV, and JSON output
-- Remote control — send button presses (hold, rel, range, min/max, peak, light)
+- Coulomb counting / energy integration (`--integrate`)
+- Remote control — send button presses over USB
 - Guided protocol capture wizard for bug reports
-- Raw hex dump mode for protocol development
 
 ```
 $ ut61eplus read --count 5
-DC V  3.3042 V  22V AUTO
-DC V  3.3041 V  22V AUTO
-DC V  3.3044 V  22V AUTO
-DC V  3.3042 V  22V AUTO
-DC V  3.3043 V  22V AUTO
+9.090 MΩ [AUTO]
+8.902 MΩ [AUTO]
+10.182 MΩ [AUTO]
+9.399 MΩ [AUTO]
+9.176 MΩ [AUTO]
 
---- 5 samples | Min: 3.3041 | Max: 3.3044 | Avg: 3.3042
+--- 5 samples | Min: 8.9020 | Max: 10.1820 | Avg: 9.3498
 ```
 
 Output as JSON for scripting:
 
 ```
 $ ut61eplus read --format json --count 1
-{"display_raw":" 3.3042","flags":{"auto_range":true,"dc":true,"hold":false,...},"mode":"DC V","range":"22V","unit":"V","value":3.3042}
+{"display_raw":"  3.369","flags":{"auto_range":true,"dc":false,"hold":false,...},"mode":"DC V","range":"22V","unit":"V","value":3.369}
 ```
 
 Send remote commands:
@@ -49,13 +49,13 @@ $ ut61eplus --device ut8803 capture
 WARNING: UNI-T UT8803 support is EXPERIMENTAL (unverified against real hardware).
 ```
 
-## GUI
+## [GUI](docs/gui-reference.md)
 
 - Real-time value display and time-series graph with minimap
-- Statistics (min/max/avg), cursor measurements, reference lines with threshold triggers
-- Recording with CSV export
-- Remote control buttons (hold, rel, range, min/max, peak)
-- Light and dark themes, responsive layout
+- Statistics, cursor measurements, reference lines with threshold triggers
+- Live specifications (resolution, accuracy) for the current range
+- Recording with CSV export and remote control buttons
+- Big meter mode for bench-mount use
 
 ## Supported devices
 
