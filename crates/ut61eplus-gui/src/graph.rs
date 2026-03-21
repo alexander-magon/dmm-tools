@@ -282,7 +282,11 @@ impl Graph {
             let t = self.elapsed_secs(point.time);
 
             if let Some(prev) = prev_time {
-                let gap = point.time.duration_since(prev).as_secs_f64();
+                let gap = point
+                    .time
+                    .checked_duration_since(prev)
+                    .map(|d| d.as_secs_f64())
+                    .unwrap_or(0.0);
                 if gap > self.gap_threshold_secs && !current_segment.is_empty() {
                     segments.push(std::mem::take(&mut current_segment));
                 }
@@ -305,7 +309,11 @@ impl Graph {
 
         for point in &self.history {
             if let Some(p) = prev {
-                let gap = point.time.duration_since(p.time).as_secs_f64();
+                let gap = point
+                    .time
+                    .checked_duration_since(p.time)
+                    .map(|d| d.as_secs_f64())
+                    .unwrap_or(0.0);
                 if gap > self.gap_threshold_secs {
                     let t1 = self.elapsed_secs(p.time);
                     let t2 = self.elapsed_secs(point.time);
