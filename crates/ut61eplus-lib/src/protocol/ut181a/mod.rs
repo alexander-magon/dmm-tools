@@ -167,8 +167,13 @@ impl Ut181aProtocol {
 }
 
 impl Protocol for Ut181aProtocol {
-    fn init(&mut self, _transport: &dyn Transport) -> Result<()> {
+    fn init(&mut self, transport: &dyn Transport) -> Result<()> {
         // No trigger — user must enable "Communication ON" on the meter
+        // Send CMD_CONT_DATA (0x05, enable=1) to start the measurement stream.
+        // Verified against real UT181A hardware: bytes AB CD 04 00 05 01 0A 00.
+        debug!("ut181a: sending start-stream command (CMD_CONT_DATA)");
+        let frame = build_command(&[0x05, 0x01]);
+        transport.write(&frame)?;
         debug!("ut181a: init (streaming, manual enable required)");
         Ok(())
     }
@@ -623,4 +628,20 @@ mod tests {
         // AB CD 04 00 05 01 0A 00
         assert_eq!(frame, vec![0xAB, 0xCD, 0x04, 0x00, 0x05, 0x01, 0x0A, 0x00]);
     }
+
+    #[test]
+    fn init_sends_start_stream_command() {
+        use crate::transport::mock::MockTransport;
+        let mock = MockTransport::new(vec![]);
+        let mut proto = Ut181aProtocol::new();
+        proto.init(&mock).unwrap();
+        let written = mock.written.borrow();
+        // CMD_CONT_DATA: AB CD 04 00 05 01 0A 00
+        assert_eq!(written.len(), 1);
+        assert_eq!(
+            written[0],
+            vec![0xAB, 0xCD, 0x04, 0x00, 0x05, 0x01, 0x0A, 0x00]
+        );
+    }
+
 }
