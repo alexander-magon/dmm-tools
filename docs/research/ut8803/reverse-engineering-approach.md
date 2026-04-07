@@ -524,6 +524,24 @@ defines the programming interface:
     (bytes 12-13) provides bits for inductance test frequency and
     other measurement-specific flags. [VENDOR]
 
+## USB Bridge Whitelist (from UCI SDK)
+
+The Ghidra decompilation of `uci.dll` revealed a whitelist of 5 USB-to-serial
+bridge VID:PID pairs that the UCI SDK recognizes for bench DMM communication:
+
+| VID:PID | Identity | Notes |
+|---------|----------|-------|
+| `5345:1234` | Owon/Hoitek instrument interface | — |
+| `5345:7777` | Owon/Hoitek (variant) | — |
+| `5656:0834` | Unknown Chinese USB-serial bridge | — |
+| `4348:5537` | WCH CH341 serial | — |
+| `1A86:E008` | WCH QinHeng HID (CH9325/CH9102) | Used by UT632, UT803, UT804 |
+
+The UT8803 itself uses CP2110 (`10C4:EA80`), not any of these bridges. The
+whitelist covers other UCI-protocol bench meters (UT632, UT803, UT804) that
+use the QinHeng HID transport instead. Supporting those models would require
+a third transport backend separate from both CP2110 and CH9329.
+
 ## Fundamental Architectural Difference from UT61E+
 
 The UT8803 uses a fundamentally different communication architecture

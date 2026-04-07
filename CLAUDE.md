@@ -1,10 +1,10 @@
 # UT61E+ Multimeter Tool
 
-Rust workspace for communicating with the UNI-T UT61E+ multimeter via USB (CP2110 HID bridge).
+Rust workspace for communicating with UNI-T multimeters via USB (CP2110 and CH9329 HID bridges).
 
 ## Project structure
 
-- `crates/ut61eplus-lib/` — library: CP2110 transport, protocol framing, measurement parsing, device tables. `protocol` module is `pub(crate)` — consumers use `Dmm` API, not raw frame extraction.
+- `crates/ut61eplus-lib/` — library: CP2110 and CH9329 transports, protocol framing, measurement parsing, device tables. `protocol` module is `pub(crate)` — consumers use `Dmm` API, not raw frame extraction.
 - `crates/ut61eplus-cli/` — CLI binary (`main.rs` for commands, `capture.rs` for guided capture tool, `format.rs` for output formatting)
 - `crates/ut61eplus-gui/` — GUI binary: real-time display and plotting (eframe/egui)
 

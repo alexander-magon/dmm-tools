@@ -72,10 +72,15 @@ streaming protocol. Use `--device ut8803`.
 | Model | Brand | Type | VID:PID | Status | Notes |
 |-------|-------|------|---------|--------|-------|
 | **UT8802 / UT8802N** | UNI-T | Bench DMM | `10C4:EA80` | RE complete | 0xAC header, 8-byte BCD frames, no checksum |
-| **UT632 / UT632N** | UNI-T | Bench DMM | `1A86:E008` | Documented | QinHeng HID with auto-detect (0xAC or 0xABCD) |
-| **UT803 / UT803N** | UNI-T | Bench DMM | `1A86:E008` | Documented | QinHeng HID with auto-detect (0xAC or 0xABCD) |
-| **UT804 / UT804N** | UNI-T | Bench DMM | `1A86:E008` | Documented | QinHeng HID with auto-detect, range table in programming manual |
+| **UT632 / UT632N** | UNI-T | Bench DMM | `1A86:E008` | Documented | QinHeng HID¹ with auto-detect (0xAC or 0xABCD) |
+| **UT803 / UT803N** | UNI-T | Bench DMM | `1A86:E008` | Documented | QinHeng HID¹ with auto-detect (0xAC or 0xABCD) |
+| **UT804 / UT804N** | UNI-T | Bench DMM | `1A86:E008` | Documented | QinHeng HID¹ with auto-detect, range table in programming manual |
 | **UT805A / UT805N** | UNI-T | Bench DMM | Serial | Documented | Serial (9600, DATA:7 per manual), range table in programming manual |
+
+¹ **QinHeng HID (VID `0x1A86`, PID `0xE008`)** is a third USB bridge type
+(WCH CH9325 or CH9102), separate from both CP2110 and CH9329. Supporting
+these models would require a new transport backend — our existing CP2110 and
+CH9329 transports do not cover this chip.
 
 ### Independent research findings
 

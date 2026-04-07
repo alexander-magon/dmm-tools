@@ -27,10 +27,11 @@ This guide covers the complete lifecycle for adding a new multimeter, from initi
 - `SLABHIDtoUART.dll` or `CP2110.dll` → Silicon Labs CP2110 HID-to-UART bridge
 - `uci.dll` → UNI-T UCI SDK (bench DMM protocol, e.g., UT8803)
 - `CH9329DLL.dll` → WCH CH9329 HID bridge (different transport than CP2110)
+- QinHeng HID (VID `0x1A86`, PID `0xE008`) → WCH CH9325/CH9102 bridge, used by UT632/UT803/UT804; different from both CP2110 and CH9329, would need a third transport backend
 - Direct serial port usage (`Qt5SerialPort.dll`, COM port references) → CDC/ACM or RS-232 adapter
 - If none of the above match, the vendor software itself becomes the primary source for understanding the transport
 
-**Non-CP2110 devices:** The `Transport` trait abstracts the byte-level transport. Adding a new transport backend (e.g., CDC serial via `serialport` crate) requires implementing `Transport` — see the existing `Cp2110Transport` and `MockTransport` for the interface. The protocol layer above is transport-agnostic.
+**Non-CP2110 devices:** The `Transport` trait abstracts the byte-level transport. Adding a new transport backend (e.g., CDC serial via `serialport` crate, or QinHeng HID for UT632/UT803/UT804) requires implementing `Transport` — see the existing `Cp2110Transport`, `Ch9329Transport`, and `MockTransport` for the interface. The protocol layer above is transport-agnostic. Note: the UCI SDK's `uci.dll` contains a whitelist of 5 USB-to-serial bridge VID:PID pairs used by bench meters (including Owon/Hoitek, WCH CH341, and QinHeng HID), which is useful context for identifying which bridge a new bench DMM uses.
 
 ## Phase 2: Clean-Room Reverse Engineering
 
