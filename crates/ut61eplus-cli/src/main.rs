@@ -219,7 +219,12 @@ fn main() {
 
     if let Err(e) = result {
         error!("{e}");
-        eprintln!("{} {e}", style("Error:").red().bold());
+        let msg = e.to_string();
+        if msg.contains("timeout") {
+            print_no_response_help(device);
+        } else {
+            eprintln!("{} {msg}", style("Error:").red().bold());
+        }
         std::process::exit(1);
     }
 }
@@ -240,6 +245,17 @@ fn build_device_help() -> String {
     }
     help.push_str("\nAlso accepts aliases: ut61e+, ut61b, ut171a, ut181, etc.\nQuote names with special characters: --device 'ut61e+'");
     help
+}
+
+/// Print a "no response" warning with device-specific activation instructions.
+fn print_no_response_help(device: &SelectableDevice) {
+    eprintln!(
+        "{} No response from meter. Check that --device {} is correct \
+         and that data transmission is enabled.",
+        style("Warning:").yellow(),
+        device.id,
+    );
+    eprintln!("{}", style(device.activation_instructions).dim());
 }
 
 /// Print platform-specific setup instructions when no USB cable is detected.
@@ -500,12 +516,7 @@ fn run_read_loop<T: ut61eplus_lib::transport::Transport>(
                 if consecutive_timeouts == 5
                     && let Some(d) = device
                 {
-                    eprintln!(
-                        "{} No response from meter. Check that --device {} is correct and that data transmission is enabled.",
-                        style("Warning:").yellow(),
-                        d.id,
-                    );
-                    eprintln!("{}", style(d.activation_instructions).dim());
+                    print_no_response_help(d);
                 }
             }
             Err(e) if e.is_interrupted() => {
