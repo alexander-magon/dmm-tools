@@ -55,6 +55,11 @@ impl Error {
         }
     }
 
+    /// True when the error means no USB adapter was found on the bus.
+    pub fn is_device_not_found(&self) -> bool {
+        matches!(self, Self::DeviceNotFound { .. } | Self::NoTransportFound)
+    }
+
     /// True when the underlying cause is an interrupted system call (EINTR),
     /// which typically means a signal (e.g. Ctrl-C) arrived mid-read.
     pub fn is_interrupted(&self) -> bool {

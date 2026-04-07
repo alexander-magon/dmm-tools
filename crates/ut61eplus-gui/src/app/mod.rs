@@ -494,6 +494,13 @@ impl App {
                     info!("UI: disconnected: {reason}");
                     self.connection_state = ConnectionState::Reconnecting;
                 }
+                DmmMessage::DeviceNotFound => {
+                    error!("UI: USB cable not found");
+                    self.last_error = Some("__device_not_found__".to_string());
+                    if self.connection_state == ConnectionState::Disconnected {
+                        clear_channel = true;
+                    }
+                }
                 DmmMessage::Error(e) => {
                     error!("UI: error: {e}");
                     self.last_error = Some(e);
@@ -539,7 +546,7 @@ impl App {
 
         ui.add_space(8.0);
 
-        let is_device_not_found = error.contains("not found");
+        let is_device_not_found = error == "__device_not_found__";
 
         if is_device_not_found {
             // HID device not found — dongle issue

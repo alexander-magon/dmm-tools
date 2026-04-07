@@ -15,6 +15,8 @@ pub(crate) enum DmmMessage {
     },
     Disconnected(String),
     Error(String),
+    /// USB cable/adapter not detected on the bus.
+    DeviceNotFound,
     /// Waiting for meter response (consecutive timeout count).
     WaitingForMeter(u32),
 }
@@ -67,7 +69,12 @@ pub(super) fn run_device_thread<T, F>(
             d
         }
         Err(e) => {
-            let _ = msg_tx.send(DmmMessage::Error(e.to_string()));
+            let msg = if e.is_device_not_found() {
+                DmmMessage::DeviceNotFound
+            } else {
+                DmmMessage::Error(e.to_string())
+            };
+            let _ = msg_tx.send(msg);
             ctx.request_repaint();
             return;
         }
