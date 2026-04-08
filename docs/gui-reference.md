@@ -231,6 +231,7 @@ do not modify the persisted `settings.json`.
 | `--device <ID>` | Device family to connect to (e.g., `ut61eplus`, `ut181a`, `mock`). Run `--help` for the full list with aliases. |
 | `--mock-mode <MODE>` | Pin mock device to a specific mode (only with `--device mock`). Modes: dcv, acv, ohm, cap, hz, temp, dcma, ohm-ol, ncv. |
 | `--theme <THEME>` | Theme override: `dark`, `light`, or `system`. |
+| `--renderer <RENDERER>` | Graphics renderer: `wgpu` (default) or `glow` (OpenGL, better compatibility on older GPUs). If wgpu fails at startup, glow is tried automatically. |
 | `-V`, `--version` | Print version and exit. |
 | `-h`, `--help` | Print help and exit. |
 

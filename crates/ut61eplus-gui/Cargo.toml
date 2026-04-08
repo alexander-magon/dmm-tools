@@ -7,7 +7,7 @@ description = "GUI application for the UNI-T UT61E+ multimeter"
 
 [dependencies]
 ut61eplus-lib = { path = "../ut61eplus-lib" }
-eframe = "0.31"
+eframe = { version = "0.31", features = ["glow", "wgpu"] }
 egui_plot = "0.31"
 chrono = "0.4"
 csv = "1"

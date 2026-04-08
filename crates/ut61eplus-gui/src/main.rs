@@ -52,6 +52,10 @@ struct Args {
     /// Theme override [dark, light, system]
     #[arg(long)]
     theme: Option<String>,
+
+    /// Graphics renderer [wgpu, glow]
+    #[arg(long)]
+    renderer: Option<String>,
 }
 
 /// Build long help text for --device from the registry.
@@ -82,6 +86,7 @@ pub struct CliOverrides {
     pub device: Option<String>,
     pub mock_mode: Option<String>,
     pub theme: Option<settings::ThemeMode>,
+    pub renderer: Option<eframe::Renderer>,
 }
 
 fn parse_args() -> CliOverrides {
@@ -137,6 +142,20 @@ fn parse_args() -> CliOverrides {
             .exit();
     }
 
+    // Parse --renderer if provided
+    let renderer = args.renderer.as_deref().map(|r| match r {
+        "wgpu" => eframe::Renderer::Wgpu,
+        "glow" => eframe::Renderer::Glow,
+        other => {
+            Args::command()
+                .error(
+                    clap::error::ErrorKind::InvalidValue,
+                    format!("unknown renderer '{other}'. Valid options: wgpu, glow"),
+                )
+                .exit();
+        }
+    });
+
     // --mock-mode implies --device mock
     let device = match (device, &args.mock_mode) {
         (d @ Some(_), _) => d,
@@ -148,6 +167,7 @@ fn parse_args() -> CliOverrides {
         device,
         mock_mode: args.mock_mode,
         theme,
+        renderer,
     }
 }
 
@@ -236,18 +256,42 @@ fn main() -> eframe::Result<()> {
     let icon = eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/icon-256.png"))
         .expect("failed to load app icon");
 
+    let explicit_renderer = overrides.renderer.is_some();
+    let renderer = overrides.renderer.unwrap_or(eframe::Renderer::Wgpu);
+
+    let viewport = eframe::egui::ViewportBuilder::default()
+        .with_app_id("dmm-tools")
+        .with_icon(std::sync::Arc::new(icon))
+        .with_inner_size([960.0, 640.0])
+        .with_min_inner_size([400.0, 300.0]);
+
     let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_app_id("dmm-tools")
-            .with_icon(std::sync::Arc::new(icon))
-            .with_inner_size([960.0, 640.0])
-            .with_min_inner_size([400.0, 300.0]),
+        viewport: viewport.clone(),
+        renderer,
         ..Default::default()
     };
 
-    eframe::run_native(
+    let result = eframe::run_native(
         "dmm-tools",
         options,
         Box::new(move |cc| Ok(Box::new(app::App::new(cc, overrides)))),
-    )
+    );
+
+    // If wgpu failed and wasn't explicitly requested, retry with glow
+    if result.is_err() && !explicit_renderer {
+        log::warn!("wgpu renderer failed, falling back to glow");
+        let fallback_options = eframe::NativeOptions {
+            viewport,
+            renderer: eframe::Renderer::Glow,
+            ..Default::default()
+        };
+        let fallback_overrides = parse_args();
+        return eframe::run_native(
+            "dmm-tools",
+            fallback_options,
+            Box::new(move |cc| Ok(Box::new(app::App::new(cc, fallback_overrides)))),
+        );
+    }
+
+    result
 }
