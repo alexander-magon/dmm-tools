@@ -158,6 +158,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
+            .with_app_id("dmm-tools")
             .with_inner_size([960.0, 640.0])
             .with_min_inner_size([400.0, 300.0]),
         ..Default::default()
