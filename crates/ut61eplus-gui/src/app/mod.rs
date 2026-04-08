@@ -154,9 +154,10 @@ pub struct App {
     meter_content_height: f32,
     /// Cached reading dimension ratios for big meter mode.
     meter_reading_ratios: display::ReadingRatios,
-    /// Cache key for big meter scale: (window_w, window_h, mode_raw).
-    /// Recalculate when any component changes.
-    meter_cache_key: (u32, u32, u16),
+    /// Cache key for big meter scale. Recalculate when any input changes.
+    meter_cache_key: u64,
+    /// Number of recalculation passes since last cache key change.
+    meter_recalc_passes: u8,
     /// Transient big meter mode toggle (not persisted to settings).
     big_meter_toggled: bool,
     /// Whether the keyboard shortcut help overlay is open.
@@ -208,7 +209,8 @@ impl App {
             export_result_rx: None,
             meter_content_height: DEFAULT_METER_CONTENT_HEIGHT,
             meter_reading_ratios: display::ReadingRatios::default(),
-            meter_cache_key: (0, 0, 0),
+            meter_cache_key: 0,
+            meter_recalc_passes: 0,
             big_meter_toggled: false,
             shortcut_help_open: false,
         }
@@ -1177,8 +1179,20 @@ impl eframe::App for App {
             // when the window is resized to avoid frame-to-frame oscillation.
             egui::CentralPanel::default().show(ctx, |ui| {
                 let size = ctx.screen_rect();
-                let mode_raw = self.last_measurement.as_ref().map_or(0, |m| m.mode_raw);
-                let cache_key = (size.width() as u32, size.height() as u32, mode_raw);
+                use std::hash::{Hash, Hasher};
+                let cache_key = {
+                    let mut h = std::hash::DefaultHasher::new();
+                    (size.width() as u32).hash(&mut h);
+                    (size.height() as u32).hash(&mut h);
+                    self.last_measurement
+                        .as_ref()
+                        .map_or(0u16, |m| m.mode_raw)
+                        .hash(&mut h);
+                    self.settings.show_stats.hash(&mut h);
+                    self.settings.show_specs.hash(&mut h);
+                    self.big_meter_toggled.hash(&mut h);
+                    h.finish()
+                };
                 let needs_recalc = cache_key != self.meter_cache_key;
 
                 let panel_rect = ui.max_rect();
@@ -1210,11 +1224,19 @@ impl eframe::App for App {
                         if needs_recalc && scale > 0.0 {
                             let total_below_reading = ui.cursor().top() - after_reading;
                             let measured = total_below_reading / scale;
-                            if (self.meter_content_height - measured).abs() < 1.0 {
-                                // Converged — lock in this key
+                            if (self.meter_content_height - measured).abs() < 1.0
+                                || self.meter_recalc_passes >= 4
+                            {
+                                // Converged, or max passes reached (e.g. button
+                                // row wrapping oscillation). Use the larger height
+                                // so everything fits.
+                                self.meter_content_height = self.meter_content_height.max(measured);
                                 self.meter_cache_key = cache_key;
+                                self.meter_recalc_passes = 0;
+                            } else {
+                                self.meter_content_height = measured;
+                                self.meter_recalc_passes += 1;
                             }
-                            self.meter_content_height = measured;
                             self.meter_reading_ratios = measured_ratios;
                         }
                     });
