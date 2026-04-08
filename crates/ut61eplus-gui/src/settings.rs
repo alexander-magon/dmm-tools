@@ -48,6 +48,8 @@ pub struct Settings {
     pub query_device_name: bool,
     /// Automatically connect to the meter when the GUI starts.
     pub auto_connect: bool,
+    /// Keep the window above all other windows.
+    pub always_on_top: bool,
     /// UI zoom level as percentage relative to OS default (100 = OS default).
     pub zoom_pct: u32,
     /// Delay between measurement requests in milliseconds (0 = fastest possible).
@@ -72,6 +74,7 @@ impl Default for Settings {
             show_specs: true,
             query_device_name: true,
             auto_connect: true,
+            always_on_top: false,
             zoom_pct: 100,
             sample_interval_ms: 0,
             device_family: ut61eplus_lib::protocol::registry::default_device()
@@ -144,6 +147,7 @@ mod tests {
             show_specs: false,
             query_device_name: false,
             auto_connect: false,
+            always_on_top: true,
             zoom_pct: 150,
             sample_interval_ms: 500,
             device_family: "ut8803".to_string(),
@@ -157,6 +161,7 @@ mod tests {
         assert!(deserialized.show_stats);
         assert!(!deserialized.show_recording);
         assert!(!deserialized.show_specs);
+        assert!(deserialized.always_on_top);
         assert_eq!(deserialized.zoom_pct, 150);
         assert_eq!(deserialized.sample_interval_ms, 500);
     }

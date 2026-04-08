@@ -273,6 +273,15 @@ impl App {
         self.settings.save();
     }
 
+    pub(super) fn apply_always_on_top(&self, ctx: &egui::Context) {
+        let level = if self.settings.always_on_top {
+            egui::WindowLevel::AlwaysOnTop
+        } else {
+            egui::WindowLevel::Normal
+        };
+        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(level));
+    }
+
     fn handle_keyboard_shortcuts(&mut self, ctx: &egui::Context) {
         use egui::{Key, Modifiers};
 
@@ -314,6 +323,13 @@ impl App {
         // Ctrl+B: Toggle big meter mode
         if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::B)) {
             self.toggle_big_meter();
+        }
+
+        // Ctrl+T: Toggle always on top
+        if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::T)) {
+            self.settings.always_on_top = !self.settings.always_on_top;
+            self.apply_always_on_top(ctx);
+            self.settings.save();
         }
 
         // Ctrl+E: Export CSV
@@ -783,6 +799,11 @@ impl App {
         ui.data_mut(|d| d.insert_temp(cache_id, actual_width));
     }
 
+    /// Returns true if the app is running on a native Wayland session.
+    fn is_wayland() -> bool {
+        std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty())
+    }
+
     /// Override the AccessKit label for a widget whose visible text is not
     /// descriptive (e.g. icon-only buttons like "⚙" or "?"). This ensures
     /// screen readers announce a meaningful name instead of the raw symbol.
@@ -1158,6 +1179,9 @@ impl eframe::App for App {
         // Auto-connect on first frame if enabled
         if self.first_frame {
             self.first_frame = false;
+            if self.settings.always_on_top {
+                self.apply_always_on_top(ctx);
+            }
             if self.settings.auto_connect {
                 self.connect(ctx);
             }
@@ -1388,6 +1412,7 @@ impl App {
                             ("Ctrl+L", "Clear graph & statistics"),
                             ("Ctrl+R", "Toggle recording"),
                             ("Ctrl+B", "Toggle big meter mode"),
+                            ("Ctrl+T", "Toggle always on top"),
                             ("Ctrl+E", "Export CSV"),
                             ("Ctrl+Plus/Minus", "Zoom in / out"),
                             ("Ctrl+0", "Reset zoom to 100%"),
