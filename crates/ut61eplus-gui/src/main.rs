@@ -118,6 +118,25 @@ fn parse_args() -> CliOverrides {
         }
     });
 
+    // Validate --mock-mode if provided
+    if let Some(ref mode) = args.mock_mode
+        && mode.parse::<ut61eplus_lib::mock::MockMode>().is_err()
+    {
+        let valid: Vec<&str> = ut61eplus_lib::mock::MockMode::ALL
+            .iter()
+            .map(|m| m.label())
+            .collect();
+        Args::command()
+            .error(
+                clap::error::ErrorKind::InvalidValue,
+                format!(
+                    "unknown mock mode '{mode}'. Valid modes: {}",
+                    valid.join(", ")
+                ),
+            )
+            .exit();
+    }
+
     // --mock-mode implies --device mock
     let device = match (device, &args.mock_mode) {
         (d @ Some(_), _) => d,
