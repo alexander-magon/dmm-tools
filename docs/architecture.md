@@ -80,7 +80,9 @@ Capture reports are written atomically (temp file + rename) for crash safety.
 
 `eframe`/`egui` application. Runs a background `std::thread` for device I/O,
 communicates with the UI via `mpsc` channels. Main graph via `egui_plot`,
-minimap via custom painter. Features: responsive layout with resizable panels,
+minimap via custom painter. Uses `clap` for CLI argument parsing (`--device`,
+`--theme`, `--mock-mode`) — overrides are session-only and don't persist to
+`settings.json`. Features: responsive layout with resizable panels,
 dark/light themes with WCAG-compliant colors, PPK2-style minimap navigation,
 continuous timeline across reconnects, pause/resume capture, graph overlays
 (mean line, reference lines, measurement cursors, min/max envelope, trigger markers),

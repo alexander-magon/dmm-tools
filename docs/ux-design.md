@@ -19,6 +19,15 @@
 - `ut61eplus debug` — raw hex dump mode for protocol development
 - `ut61eplus capture` — guided protocol capture wizard for bug reports. YAML output with raw bytes, structured flags, user screen confirmations. Supports `--steps` filter, auto-resume, and freeform captures.
 
+### GUI Command-Line Options
+
+The GUI accepts `--device`, `--theme`, and `--mock-mode` flags (via `clap`,
+consistent with the CLI). These override saved settings for the current
+session only. The settings panel shows which values are overridden (e.g.,
+"UT181A (--device)"). Clicking a different value in the panel clears the
+override and persists the user's choice. See `docs/gui-reference.md` for
+the full options table.
+
 ## GUI Layout
 
 ### Theme
