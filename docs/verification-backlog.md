@@ -63,10 +63,19 @@ real hardware**. Every aspect needs end-to-end verification.
 - Aux value interpretation
 
 **UT181A** ([issue #5](https://github.com/antoinecellerier/dmm-tools/issues/5)):
-- Frame extraction (2-byte LE length, LE checksum)
-- Mode word decoding (97 nibble-encoded uint16 modes)
-- Float32 LE value parsing with precision byte
-- Device-sent unit string parsing
+- ~~SET_MONITOR command required during init~~ — **VERIFIED** 2026-04-07
+  by @alexander-magon on real UT181A (CH9329 cable). The meter does not
+  stream until the host sends CMD_CONT_DATA (`AB CD 04 00 05 01 0A 00`).
+  Communication ON alone is not sufficient. See PR #8.
+- ~~Frame extraction (2-byte LE length, LE checksum)~~ — **VERIFIED**
+  2026-04-07 by @alexander-magon: frames parse correctly on real hardware.
+- ~~Float32 LE value parsing with precision byte~~ — **VERIFIED**
+  2026-04-07 by @alexander-magon: VDC mode returns valid float32 values.
+  Precision byte decimal places (bits 4-7) confirmed to produce sane
+  display formatting.
+- Mode word decoding (97 nibble-encoded uint16 modes) — only 0x3111
+  (V DC) verified so far
+- Device-sent unit string parsing — only "VDC" verified so far
 - Misc byte format variants (normal, relative, min/max, peak)
 - Misc2 flags (auto-range, HV warning, lead error, COMP, record)
 - Measurement packet variants beyond normal format
