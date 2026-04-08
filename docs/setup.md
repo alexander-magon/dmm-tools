@@ -67,6 +67,14 @@ The USB adapter is detected but the meter isn't transmitting data:
 3. Long press the **USB/Hz** button until the **S** icon appears on the LCD
 4. The S icon confirms USB data transmission is active
 
+### GUI shows a black screen or won't render
+
+On devices with older GPUs (e.g. Raspberry Pi 3B+, OpenGL 2.1), the default wgpu renderer may fail. The GUI automatically falls back to the glow (OpenGL) renderer, but you can also force it explicitly:
+
+```sh
+ut61eplus-gui --renderer glow
+```
+
 ### GUI won't start (Linux, Wayland/X11)
 
 The GUI uses eframe/egui which supports both Wayland and X11. If you encounter display issues, try forcing X11:

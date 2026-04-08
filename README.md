@@ -74,7 +74,7 @@ See [docs/supported-devices.md](docs/supported-devices.md) for the full compatib
 
 Pre-built binaries for Linux, Windows, and macOS (x86_64 and ARM) are available on the [Releases](https://github.com/antoinecellerier/dmm-tools/releases) page.
 
-> **Unconfirmed platforms:** [macOS Intel](https://github.com/antoinecellerier/dmm-tools/issues/2), [Linux ARM](https://github.com/antoinecellerier/dmm-tools/issues/10), and [Windows ARM](https://github.com/antoinecellerier/dmm-tools/issues/11) builds are provided but haven't been tested against real hardware yet. If you're on one of these platforms, please let us know how it goes — even "it works" helps.
+> **Unconfirmed platforms:** [macOS Intel](https://github.com/antoinecellerier/dmm-tools/issues/2) and [Windows ARM](https://github.com/antoinecellerier/dmm-tools/issues/11) builds are provided but haven't been tested against real hardware yet. If you're on one of these platforms, please let us know how it goes — even "it works" helps.
 
 ### Prerequisites
 

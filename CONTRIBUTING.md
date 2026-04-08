@@ -47,16 +47,21 @@ Attach the YAML file to your GitHub issue. If your meter is an unsupported model
 
 If you have a UNI-T meter that uses the same CP2110 USB adapter (e.g. UT61B+, UT61D+), we'd love captures from it. The capture wizard will note that it's an unknown model and prompt you to complete as many steps as possible. See also [issue #7](https://github.com/antoinecellerier/dmm-tools/issues/7) for UT61D+/UT61B+ specific modes that need verification.
 
-## macOS Intel testing
+## Unconfirmed platform testing
 
-macOS ARM (Apple Silicon) has been confirmed working. macOS Intel builds are provided but haven't been verified against real hardware yet. If you have an Intel Mac and a supported meter, we'd appreciate your help:
+macOS ARM (Apple Silicon) and Linux ARM (Raspberry Pi 3B+) have been confirmed working. The following platforms have builds but haven't been verified yet:
 
-1. Download the Intel build from [Releases](https://github.com/antoinecellerier/dmm-tools/releases), or build from source: `cargo build --workspace`
-2. Plug in the CP2110 USB adapter and run `ut61eplus list`
+- **macOS Intel** — [issue #2](https://github.com/antoinecellerier/dmm-tools/issues/2)
+- **Windows ARM** — [issue #11](https://github.com/antoinecellerier/dmm-tools/issues/11)
+
+If you have one of these platforms and a supported meter:
+
+1. Download the appropriate build from [Releases](https://github.com/antoinecellerier/dmm-tools/releases), or build from source: `cargo build --workspace`
+2. Plug in the USB adapter and run `ut61eplus list`
 3. If the device is found, try `ut61eplus read` and `ut61eplus-gui`
-4. Comment on [issue #2](https://github.com/antoinecellerier/dmm-tools/issues/2) with your results — include your macOS version, meter model, and whether the device was detected and readings were correct
+4. Comment on the relevant issue with your results — include your OS version, device, meter model, and whether readings were correct
 
-Even a simple "it works on macOS Ventura with a UT61E+" is valuable. If something doesn't work, the output of `RUST_LOG=ut61eplus_lib=trace ut61eplus read` will help us debug.
+Even "it works" is valuable. If something doesn't work, the output of `RUST_LOG=ut61eplus_lib=trace ut61eplus read` will help us debug.
 
 ## Code changes
 
