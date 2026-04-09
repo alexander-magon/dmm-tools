@@ -304,6 +304,8 @@ Press **Ctrl+B** again to enter **minimal mode**, which also hides the
 top bar and command buttons, leaving only the reading and mode line.
 Press **Ctrl+B** a third time to return to your normal layout.
 
+![Minimal meter mode — reading only, no chrome](../assets/gui-minimal-meter.png)
+
 If all panels are already hidden via settings, **⊞** restores all panels
 to their defaults.
 
