@@ -263,7 +263,7 @@ fn main() -> eframe::Result<()> {
         .with_app_id("dmm-tools")
         .with_icon(std::sync::Arc::new(icon))
         .with_inner_size([960.0, 640.0])
-        .with_min_inner_size([400.0, 300.0]);
+        .with_min_inner_size([200.0, 150.0]);
 
     let options = eframe::NativeOptions {
         viewport: viewport.clone(),

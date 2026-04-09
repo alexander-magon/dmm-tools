@@ -2,7 +2,8 @@ use eframe::egui::{Color32, FontId, RichText, Ui};
 use ut61eplus_lib::measurement::{MeasuredValue, Measurement};
 
 /// Base font size for the primary reading in the wide (side panel) layout.
-const BASE_READING_FONT_SIZE: f32 = 36.0;
+/// Also the minimum font size for the big meter scaled reading.
+pub(crate) const BASE_READING_FONT_SIZE: f32 = 36.0;
 
 /// Font size for the primary reading in the compact (narrow) layout.
 const COMPACT_READING_FONT_SIZE: f32 = 28.0;

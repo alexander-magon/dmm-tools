@@ -1228,6 +1228,42 @@ impl eframe::App for App {
         let meter_only = self.big_meter_mode != BigMeterMode::Off
             || (!self.settings.show_graph && !self.settings.show_recording);
 
+        // Dynamic minimum window size derived from actual rendered content.
+        // Reading dimensions come from cached ratios × base font size;
+        // top bar widths come from previous-frame measurements.
+        let base = display::BASE_READING_FONT_SIZE;
+        let ratios = &self.meter_reading_ratios;
+        let reading_w = ratios.w * base;
+        let reading_h = ratios.h * base + self.meter_content_height;
+        let bar_left_w: f32 =
+            ctx.data(|d| d.get_temp(egui::Id::new("top_bar_left_w")).unwrap_or(300.0));
+        let bar_right_w: f32 = ctx.data(|d| {
+            d.get_temp(egui::Id::new("top_bar_right_w"))
+                .unwrap_or(120.0)
+        });
+        let bar_min_w = bar_left_w.max(bar_right_w) + 16.0;
+
+        let min_size = if minimal {
+            // Just the reading — no top bar, no buttons.
+            egui::vec2(reading_w, reading_h)
+        } else if meter_only {
+            // Reading + buttons + top bar.
+            egui::vec2(reading_w.max(bar_min_w), reading_h)
+        } else {
+            // Full layout: top bar constrains width, panels need height.
+            egui::vec2(bar_min_w, reading_h)
+        };
+        ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(min_size));
+        // If the window is smaller than the new minimum (e.g. after exiting
+        // minimal mode), grow it to fit.
+        let screen = ctx.screen_rect();
+        if screen.width() < min_size.x || screen.height() < min_size.y {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                screen.width().max(min_size.x),
+                screen.height().max(min_size.y),
+            )));
+        }
+
         if meter_only {
             // Big meter mode: compute scale from window size, only recalculate
             // when the window is resized to avoid frame-to-frame oscillation.
