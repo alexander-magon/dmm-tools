@@ -221,6 +221,7 @@ Opened via the gear icon. Persisted to `~/.config/ut61eplus/settings.json`.
 | **Mock mode** | Auto (cycle) | Only shown when Device is Mock. Pins the mock to a specific measurement mode, or cycles through all modes. Requires reconnect. |
 | **Zoom** | 100% | UI scale (30%–300%). Also controllable via keyboard. |
 | **Always on top** | off | Keep the window above all other windows (`Ctrl+T`). On Wayland, use the title bar right-click menu or launch with `WAYLAND_DISPLAY=` to force X11 (winit limitation). |
+| **Hide window decorations** | off | Remove the title bar and window borders (`Ctrl+D`). Use Alt+drag (Linux) or the keyboard shortcut to restore. |
 
 ## Command-Line Options
 
@@ -250,6 +251,7 @@ Press `?` or click the `?` button in the top bar to open an in-app shortcut refe
 | `Ctrl+R` | Toggle recording |
 | `Ctrl+B` | Toggle big meter mode |
 | `Ctrl+T` | Toggle always on top |
+| `Ctrl+D` | Toggle window decorations |
 | `Ctrl+E` | Export CSV |
 | `Ctrl+Plus` / `Ctrl+Minus` | Zoom in / out |
 | `Ctrl+0` | Reset zoom to 100% |

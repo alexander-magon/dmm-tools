@@ -282,6 +282,12 @@ impl App {
         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(level));
     }
 
+    pub(super) fn apply_decorations(&self, ctx: &egui::Context) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(
+            !self.settings.hide_decorations,
+        ));
+    }
+
     fn handle_keyboard_shortcuts(&mut self, ctx: &egui::Context) {
         use egui::{Key, Modifiers};
 
@@ -329,6 +335,13 @@ impl App {
         if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::T)) {
             self.settings.always_on_top = !self.settings.always_on_top;
             self.apply_always_on_top(ctx);
+            self.settings.save();
+        }
+
+        // Ctrl+D: Toggle window decorations
+        if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::D)) {
+            self.settings.hide_decorations = !self.settings.hide_decorations;
+            self.apply_decorations(ctx);
             self.settings.save();
         }
 
@@ -1182,6 +1195,9 @@ impl eframe::App for App {
             if self.settings.always_on_top {
                 self.apply_always_on_top(ctx);
             }
+            if self.settings.hide_decorations {
+                self.apply_decorations(ctx);
+            }
             if self.settings.auto_connect {
                 self.connect(ctx);
             }
@@ -1413,6 +1429,7 @@ impl App {
                             ("Ctrl+R", "Toggle recording"),
                             ("Ctrl+B", "Toggle big meter mode"),
                             ("Ctrl+T", "Toggle always on top"),
+                            ("Ctrl+D", "Toggle window decorations"),
                             ("Ctrl+E", "Export CSV"),
                             ("Ctrl+Plus/Minus", "Zoom in / out"),
                             ("Ctrl+0", "Reset zoom to 100%"),

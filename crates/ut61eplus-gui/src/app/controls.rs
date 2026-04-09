@@ -300,6 +300,22 @@ impl App {
             }
         });
 
+        ui.horizontal(|ui| {
+            if setting_checkbox(
+                ui,
+                &mut self.settings.hide_decorations,
+                "Hide window decorations",
+            ) {
+                self.apply_decorations(ui.ctx());
+                self.settings.save();
+            }
+            ui.label(
+                RichText::new("(Ctrl+D to toggle)")
+                    .small()
+                    .color(ui.visuals().weak_text_color()),
+            );
+        });
+
         ui.separator();
     }
 }
