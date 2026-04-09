@@ -5,7 +5,7 @@ use ut61eplus_lib::protocol::registry;
 use crate::settings::ThemeMode;
 use crate::theme::ThemeColors;
 
-use super::App;
+use super::{App, BigMeterMode};
 
 /// Show a settings checkbox; returns `true` if the value changed.
 fn setting_checkbox(ui: &mut Ui, value: &mut bool, label: &str) -> bool {
@@ -152,7 +152,7 @@ impl App {
                 | setting_checkbox(ui, &mut self.settings.show_specs, "Specifications");
             if changed {
                 // Manual settings change exits big meter toggle.
-                self.big_meter_toggled = false;
+                self.big_meter_mode = BigMeterMode::Off;
                 self.settings.save();
             }
         });

@@ -97,6 +97,17 @@ impl FormattedStats {
     }
 }
 
+/// Big meter display mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+enum BigMeterMode {
+    #[default]
+    Off,
+    /// Value + mode line + command buttons (no graph/stats/specs).
+    Full,
+    /// Value + mode line only (no top bar, no buttons).
+    Minimal,
+}
+
 /// Connection state.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum ConnectionState {
@@ -158,8 +169,8 @@ pub struct App {
     meter_cache_key: u64,
     /// Number of recalculation passes since last cache key change.
     meter_recalc_passes: u8,
-    /// Transient big meter mode toggle (not persisted to settings).
-    big_meter_toggled: bool,
+    /// Transient big meter mode (not persisted to settings).
+    big_meter_mode: BigMeterMode,
     /// Whether the keyboard shortcut help overlay is open.
     shortcut_help_open: bool,
 }
@@ -211,7 +222,7 @@ impl App {
             meter_reading_ratios: display::ReadingRatios::default(),
             meter_cache_key: 0,
             meter_recalc_passes: 0,
-            big_meter_toggled: false,
+            big_meter_mode: BigMeterMode::Off,
             shortcut_help_open: false,
         }
     }
@@ -326,9 +337,9 @@ impl App {
             self.recording.toggle();
         }
 
-        // Ctrl+B: Toggle big meter mode
+        // Ctrl+B: Cycle big meter mode (off -> full -> minimal -> off)
         if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::B)) {
-            self.toggle_big_meter();
+            self.cycle_big_meter();
         }
 
         // Ctrl+T: Toggle always on top
@@ -1203,16 +1214,19 @@ impl eframe::App for App {
             }
         }
 
-        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-            self.show_top_bar(ui, ctx);
-            self.show_settings_panel(ui);
-        });
+        let minimal = self.big_meter_mode == BigMeterMode::Minimal;
+        if !minimal {
+            egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
+                self.show_top_bar(ui, ctx);
+                self.show_settings_panel(ui);
+            });
+        }
 
         // Determine layout mode before panels
         let wide = ctx.screen_rect().width() >= 900.0;
 
-        let meter_only =
-            self.big_meter_toggled || (!self.settings.show_graph && !self.settings.show_recording);
+        let meter_only = self.big_meter_mode != BigMeterMode::Off
+            || (!self.settings.show_graph && !self.settings.show_recording);
 
         if meter_only {
             // Big meter mode: compute scale from window size, only recalculate
@@ -1230,7 +1244,7 @@ impl eframe::App for App {
                         .hash(&mut h);
                     self.settings.show_stats.hash(&mut h);
                     self.settings.show_specs.hash(&mut h);
-                    self.big_meter_toggled.hash(&mut h);
+                    self.big_meter_mode.hash(&mut h);
                     h.finish()
                 };
                 let needs_recalc = cache_key != self.meter_cache_key;
@@ -1245,10 +1259,13 @@ impl eframe::App for App {
                             &self.meter_reading_ratios,
                         );
                         let after_reading = ui.cursor().top();
-                        self.show_remote_controls(ui, scale);
+
+                        if !minimal {
+                            self.show_remote_controls(ui, scale);
+                        }
                         self.show_connection_help(ui);
 
-                        if !self.big_meter_toggled {
+                        if self.big_meter_mode == BigMeterMode::Off {
                             self.show_specs_section_inline(ui, scale);
 
                             if self.settings.show_stats {
@@ -1362,10 +1379,9 @@ impl eframe::App for App {
 impl App {
     /// Paint the big meter toggle button at a given rect (overlay, no layout impact).
     fn show_big_meter_toggle_at(&mut self, ui: &mut Ui, rect: egui::Rect) {
-        let (icon, tooltip) = if self.is_big_meter_toggled() {
-            ("\u{229F}", "Exit big meter mode (Ctrl+B)") // ⊟
-        } else {
-            ("\u{229E}", "Big meter mode (Ctrl+B)") // ⊞
+        let (icon, tooltip) = match self.big_meter_mode {
+            BigMeterMode::Off => ("\u{229E}", "Big meter mode (Ctrl+B)"),
+            BigMeterMode::Full | BigMeterMode::Minimal => ("\u{229F}", "Exit big meter (Ctrl+B)"),
         };
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
         child.with_layout(egui::Layout::right_to_left(egui::Align::BOTTOM), |ui| {
@@ -1374,35 +1390,42 @@ impl App {
             let response = ui.add(btn).on_hover_text(tooltip);
             Self::set_accessible_label(ui, response.id, tooltip);
             if response.clicked() {
-                self.toggle_big_meter();
+                if self.big_meter_mode == BigMeterMode::Off {
+                    // Enter big meter — use cycle_big_meter() to handle
+                    // the "already_big" restore-all-panels case.
+                    self.cycle_big_meter();
+                } else {
+                    self.big_meter_mode = BigMeterMode::Off;
+                }
             }
         });
     }
 
-    fn toggle_big_meter(&mut self) {
-        if self.big_meter_toggled {
-            self.big_meter_toggled = false;
-        } else {
-            let already_big = !self.settings.show_graph
-                && !self.settings.show_recording
-                && !self.settings.show_stats
-                && !self.settings.show_specs;
-            if already_big {
-                // All panels already hidden via settings — restore them all.
-                self.settings.show_graph = true;
-                self.settings.show_recording = true;
-                self.settings.show_stats = true;
-                self.settings.show_specs = true;
-                self.settings.save();
-            } else {
-                self.big_meter_toggled = true;
+    fn cycle_big_meter(&mut self) {
+        match self.big_meter_mode {
+            BigMeterMode::Off => {
+                let already_big = !self.settings.show_graph
+                    && !self.settings.show_recording
+                    && !self.settings.show_stats
+                    && !self.settings.show_specs;
+                if already_big {
+                    // All panels already hidden via settings — restore them all.
+                    self.settings.show_graph = true;
+                    self.settings.show_recording = true;
+                    self.settings.show_stats = true;
+                    self.settings.show_specs = true;
+                    self.settings.save();
+                } else {
+                    self.big_meter_mode = BigMeterMode::Full;
+                }
+            }
+            BigMeterMode::Full => {
+                self.big_meter_mode = BigMeterMode::Minimal;
+            }
+            BigMeterMode::Minimal => {
+                self.big_meter_mode = BigMeterMode::Off;
             }
         }
-    }
-
-    /// Whether we're currently in toggle-triggered big meter mode.
-    fn is_big_meter_toggled(&self) -> bool {
-        self.big_meter_toggled
     }
 
     fn show_shortcut_help(&mut self, ctx: &egui::Context) {
@@ -1427,7 +1450,7 @@ impl App {
                             ("Space", "Pause / Resume"),
                             ("Ctrl+L", "Clear graph & statistics"),
                             ("Ctrl+R", "Toggle recording"),
-                            ("Ctrl+B", "Toggle big meter mode"),
+                            ("Ctrl+B", "Cycle big meter (off / full / minimal)"),
                             ("Ctrl+T", "Toggle always on top"),
                             ("Ctrl+D", "Toggle window decorations"),
                             ("Ctrl+E", "Export CSV"),
