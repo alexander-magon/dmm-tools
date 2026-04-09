@@ -1229,12 +1229,13 @@ impl eframe::App for App {
             || (!self.settings.show_graph && !self.settings.show_recording);
 
         // Dynamic minimum window size derived from actual rendered content.
-        // Reading dimensions come from cached ratios × base font size;
-        // top bar widths come from previous-frame measurements.
-        let base = display::BASE_READING_FONT_SIZE;
+        // Reading dimensions come from cached ratios × minimum big meter
+        // font size; top bar widths come from previous-frame measurements.
+        let min_font = display::MIN_BIG_METER_FONT_SIZE;
         let ratios = &self.meter_reading_ratios;
-        let reading_w = ratios.w * base;
-        let reading_h = ratios.h * base + self.meter_content_height;
+        let min_scale = min_font / display::BASE_READING_FONT_SIZE;
+        let reading_w = ratios.w * min_font;
+        let reading_h = ratios.h * min_font + self.meter_content_height * min_scale;
         let bar_left_w: f32 =
             ctx.data(|d| d.get_temp(egui::Id::new("top_bar_left_w")).unwrap_or(300.0));
         let bar_right_w: f32 = ctx.data(|d| {
@@ -1267,7 +1268,14 @@ impl eframe::App for App {
         if meter_only {
             // Big meter mode: compute scale from window size, only recalculate
             // when the window is resized to avoid frame-to-frame oscillation.
-            egui::CentralPanel::default().show(ctx, |ui| {
+            // Shrink panel margins at small window sizes so the reading fills
+            // the space tighter.
+            let screen = ctx.screen_rect();
+            let margin_scale = (screen.width().min(screen.height()) / 300.0).clamp(0.1, 1.0);
+            let default_margin = ctx.style().spacing.window_margin;
+            let frame = egui::Frame::central_panel(ctx.style().as_ref())
+                .inner_margin(default_margin * margin_scale);
+            egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
                 let size = ctx.screen_rect();
                 use std::hash::{Hash, Hasher};
                 let cache_key = {
@@ -1286,12 +1294,19 @@ impl eframe::App for App {
                 let needs_recalc = cache_key != self.meter_cache_key;
 
                 let panel_rect = ui.max_rect();
-                ui.centered_and_justified(|ui| {
+                let mut add_content = |ui: &mut egui::Ui| {
                     ui.vertical(|ui| {
+                        // In minimal mode there's nothing below the reading,
+                        // so pass 0 to let the reading fill all available space.
+                        let content_h = if minimal {
+                            0.0
+                        } else {
+                            self.meter_content_height
+                        };
                         let (scale, measured_ratios) = display::show_reading_large(
                             ui,
                             self.last_measurement.as_ref(),
-                            self.meter_content_height,
+                            content_h,
                             &self.meter_reading_ratios,
                         );
                         let after_reading = ui.cursor().top();
@@ -1333,14 +1348,22 @@ impl eframe::App for App {
                             self.meter_reading_ratios = measured_ratios;
                         }
                     });
-                });
+                };
+                if minimal {
+                    add_content(ui);
+                } else {
+                    ui.centered_and_justified(add_content);
+                }
                 // Overlay toggle button in the bottom-right, outside the
                 // measured content so it doesn't affect scaling convergence.
-                let btn_rect = egui::Rect::from_min_size(
-                    egui::pos2(panel_rect.right() - 32.0, panel_rect.bottom() - 32.0),
-                    egui::vec2(28.0, 28.0),
-                );
-                self.show_big_meter_toggle_at(ui, btn_rect);
+                // Hide when the panel is too small to avoid overlapping the reading.
+                if panel_rect.width() > 100.0 && panel_rect.height() > 80.0 {
+                    let btn_rect = egui::Rect::from_min_size(
+                        egui::pos2(panel_rect.right() - 32.0, panel_rect.bottom() - 32.0),
+                        egui::vec2(28.0, 28.0),
+                    );
+                    self.show_big_meter_toggle_at(ui, btn_rect);
+                }
             });
         } else if wide {
             // Wide: left side panel for reading + stats (resizable)

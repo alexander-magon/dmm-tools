@@ -2,8 +2,11 @@ use eframe::egui::{Color32, FontId, RichText, Ui};
 use ut61eplus_lib::measurement::{MeasuredValue, Measurement};
 
 /// Base font size for the primary reading in the wide (side panel) layout.
-/// Also the minimum font size for the big meter scaled reading.
 pub(crate) const BASE_READING_FONT_SIZE: f32 = 36.0;
+
+/// Minimum font size for the big meter scaled reading. Smaller than
+/// `BASE_READING_FONT_SIZE` so the window can shrink to a tiny widget.
+pub(crate) const MIN_BIG_METER_FONT_SIZE: f32 = 12.0;
 
 /// Font size for the primary reading in the compact (narrow) layout.
 const COMPACT_READING_FONT_SIZE: f32 = 28.0;
@@ -35,7 +38,7 @@ fn format_value_display(m: &Measurement) -> String {
 /// Render the primary reading display at the given font size.
 fn show_reading_sized(ui: &mut Ui, measurement: Option<&Measurement>, value_size: f32) {
     let unit_size = value_size;
-    let mode_size = (value_size * 0.4).max(12.0);
+    let mode_size = value_size * 0.4;
 
     match measurement {
         Some(m) => {
@@ -67,7 +70,7 @@ fn show_reading_sized(ui: &mut Ui, measurement: Option<&Measurement>, value_size
             });
 
             ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = (mode_size * 0.5).max(6.0);
+                ui.spacing_mut().item_spacing.x = (mode_size * 0.5).max(2.0);
                 ui.label(
                     RichText::new(&*m.mode)
                         .font(FontId::proportional(mode_size))
@@ -140,7 +143,7 @@ pub fn show_reading_large(
     let height_coeff = ratios.h + base_content_height / BASE_READING_FONT_SIZE;
     let size_from_h = available_h / height_coeff;
 
-    let size = size_from_w.min(size_from_h).max(BASE_READING_FONT_SIZE);
+    let size = size_from_w.min(size_from_h).max(MIN_BIG_METER_FONT_SIZE);
 
     // Render and measure actual dimensions.
     let before = ui.cursor().top();
