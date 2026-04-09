@@ -35,25 +35,30 @@ fn format_value_display(m: &Measurement) -> String {
     }
 }
 
-/// Render the primary reading display at the given font size.
+/// Prepare the value text and color from a measurement.
+fn value_display(ui: &Ui, m: &Measurement) -> (String, Color32) {
+    match &m.value {
+        MeasuredValue::Normal(_) => (format_value_display(m), ui.visuals().text_color()),
+        MeasuredValue::Overload => (
+            format_value_display(m),
+            if ui.visuals().dark_mode {
+                Color32::from_rgb(220, 60, 60)
+            } else {
+                Color32::from_rgb(180, 0, 0)
+            },
+        ),
+        MeasuredValue::NcvLevel(_) => (format_value_display(m), ui.visuals().text_color()),
+    }
+}
+
+/// Render the primary reading display at the given font size (two-line layout).
 fn show_reading_sized(ui: &mut Ui, measurement: Option<&Measurement>, value_size: f32) {
     let unit_size = value_size;
     let mode_size = value_size * 0.4;
 
     match measurement {
         Some(m) => {
-            let (value_text, value_color) = match &m.value {
-                MeasuredValue::Normal(_) => (format_value_display(m), ui.visuals().text_color()),
-                MeasuredValue::Overload => (
-                    format_value_display(m),
-                    if ui.visuals().dark_mode {
-                        Color32::from_rgb(220, 60, 60)
-                    } else {
-                        Color32::from_rgb(180, 0, 0)
-                    },
-                ),
-                MeasuredValue::NcvLevel(_) => (format_value_display(m), ui.visuals().text_color()),
-            };
+            let (value_text, value_color) = value_display(ui, m);
 
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
@@ -97,6 +102,47 @@ fn show_reading_sized(ui: &mut Ui, measurement: Option<&Measurement>, value_size
     }
 }
 
+/// Render the reading with value and mode on a single line (inline layout).
+fn show_reading_inline(ui: &mut Ui, measurement: Option<&Measurement>, value_size: f32) {
+    let unit_size = value_size;
+    let mode_size = value_size * 0.4;
+
+    match measurement {
+        Some(m) => {
+            let (value_text, value_color) = value_display(ui, m);
+
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.label(
+                    RichText::new(&value_text)
+                        .font(FontId::monospace(value_size))
+                        .color(value_color),
+                );
+                ui.label(
+                    RichText::new(&*m.unit)
+                        .font(FontId::monospace(unit_size))
+                        .color(ui.visuals().text_color()),
+                );
+                ui.separator();
+                ui.spacing_mut().item_spacing.x = (mode_size * 0.3).max(2.0);
+                ui.label(
+                    RichText::new(&*m.mode)
+                        .font(FontId::proportional(mode_size))
+                        .color(ui.visuals().weak_text_color()),
+                );
+                show_flags(ui, m, mode_size);
+            });
+        }
+        None => {
+            ui.label(
+                RichText::new(format!("{} No reading", crate::NO_DATA))
+                    .font(FontId::monospace(value_size))
+                    .color(ui.visuals().weak_text_color()),
+            );
+        }
+    }
+}
+
 /// Render the large primary reading display.
 pub fn show_reading(ui: &mut Ui, measurement: Option<&Measurement>) {
     show_reading_sized(ui, measurement, BASE_READING_FONT_SIZE);
@@ -105,16 +151,26 @@ pub fn show_reading(ui: &mut Ui, measurement: Option<&Measurement>) {
 /// Cached ratios of rendered reading dimensions to font size.
 /// Used by `show_reading_large` to compute the optimal font size and
 /// updated by the caller only on window resize (to avoid oscillation).
+#[derive(Clone)]
 pub struct ReadingRatios {
-    /// Reading width / font_size.
+    /// Two-line layout: reading width / font_size.
     pub w: f32,
-    /// Reading height / font_size.
+    /// Two-line layout: reading height / font_size.
     pub h: f32,
+    /// Inline layout: reading width / font_size.
+    pub inline_w: f32,
+    /// Inline layout: reading height / font_size.
+    pub inline_h: f32,
 }
 
 impl Default for ReadingRatios {
     fn default() -> Self {
-        Self { w: 6.5, h: 1.8 }
+        Self {
+            w: 6.5,
+            h: 1.8,
+            inline_w: 10.0,
+            inline_h: 1.0,
+        }
     }
 }
 
@@ -136,29 +192,49 @@ pub fn show_reading_large(
     let available_w = ui.available_width();
     let available_h = ui.available_height();
 
-    let size_from_w = available_w / ratios.w;
+    let content_coeff = base_content_height / BASE_READING_FONT_SIZE;
 
-    // Height budget: reading + scaled content below.
-    // Content below scales as base_content_height * (size / BASE_READING_FONT_SIZE).
-    let height_coeff = ratios.h + base_content_height / BASE_READING_FONT_SIZE;
-    let size_from_h = available_h / height_coeff;
+    // Two-line layout: value+unit on top, mode below.
+    let two_line_w = available_w / ratios.w;
+    let two_line_h = available_h / (ratios.h + content_coeff);
+    let two_line_size = two_line_w.min(two_line_h);
 
-    let size = size_from_w.min(size_from_h).max(MIN_BIG_METER_FONT_SIZE);
+    // Inline layout: value+unit+mode all on one row.
+    let inline_w = available_w / ratios.inline_w;
+    let inline_h = available_h / (ratios.inline_h + content_coeff);
+    let inline_size = inline_w.min(inline_h);
+
+    // Use inline layout when it produces an equal or larger font size,
+    // meaning the window is wide enough to fit everything on one line
+    // without shrinking the value.
+    let use_inline = inline_size >= two_line_size;
+    let size = if use_inline {
+        inline_size
+    } else {
+        two_line_size
+    }
+    .max(MIN_BIG_METER_FONT_SIZE);
 
     // Render and measure actual dimensions.
     let before = ui.cursor().top();
-    show_reading_sized(ui, measurement, size);
+    if use_inline {
+        show_reading_inline(ui, measurement, size);
+    } else {
+        show_reading_sized(ui, measurement, size);
+    }
     let reading_w = ui.min_rect().width();
     let reading_h = ui.cursor().top() - before;
 
-    let measured = if size > 0.0 {
-        ReadingRatios {
-            w: reading_w / size,
-            h: reading_h / size,
+    let mut measured = ratios.clone();
+    if size > 0.0 {
+        if use_inline {
+            measured.inline_w = reading_w / size;
+            measured.inline_h = reading_h / size;
+        } else {
+            measured.w = reading_w / size;
+            measured.h = reading_h / size;
         }
-    } else {
-        ReadingRatios::default()
-    };
+    }
 
     (size / BASE_READING_FONT_SIZE, measured)
 }
